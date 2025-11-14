@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#3b82f6">
-  <title>TaskMatrix - Cloud Sync</title>
+  <title>TaskMatrix - Secure</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -146,38 +146,161 @@
     .empty-state { text-align: center; color: #9ca3af; padding: 2rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { animation: spin 1s linear infinite; }
-    .sync-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-      padding: 0.25rem 0.5rem;
-      border-radius: 0.25rem;
-      font-size: 0.75rem;
+    
+    /* Auth Styles */
+    .auth-container {
+      max-width: 400px;
+      margin: 100px auto;
+      background: white;
+      border-radius: 1rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      padding: 2rem;
+    }
+    .auth-title {
+      font-size: 2rem;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #3b82f6 0%, #9333ea 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .auth-subtitle {
+      text-align: center;
+      color: #6b7280;
+      margin-bottom: 2rem;
+      font-size: 0.875rem;
+    }
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    .form-label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      color: #374151;
+      font-size: 0.875rem;
+    }
+    .form-input {
+      width: 100%;
+      padding: 0.75rem;
+      border: 2px solid #e5e7eb;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    .auth-btn {
+      width: 100%;
+      padding: 0.75rem;
+      background: linear-gradient(135deg, #3b82f6 0%, #9333ea 100%);
+      color: white;
+      border: none;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .auth-btn:hover {
+      transform: translateY(-2px);
+    }
+    .auth-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .auth-switch {
+      text-align: center;
+      margin-top: 1.5rem;
+      color: #6b7280;
+      font-size: 0.875rem;
+    }
+    .auth-link {
+      color: #3b82f6;
+      cursor: pointer;
       font-weight: 600;
     }
-    .sync-badge.cloud { background: #dbeafe; color: #1e40af; }
-    .sync-badge.local { background: #fef3c7; color: #92400e; }
+    .auth-link:hover {
+      text-decoration: underline;
+    }
+    .error-message {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+      font-size: 0.875rem;
+    }
+    .success-message {
+      background: #d1fae5;
+      color: #065f46;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+      font-size: 0.875rem;
+    }
+    .user-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #eff6ff;
+      color: #1e40af;
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div id="auth-screen" class="auth-container" style="display: none;">
+    <h1 class="auth-title">TaskMatrix</h1>
+    <p class="auth-subtitle">Organize your life with the Eisenhower Matrix</p>
+    
+    <div id="error-message" class="error-message" style="display: none;"></div>
+    <div id="success-message" class="success-message" style="display: none;"></div>
+    
+    <form id="auth-form" onsubmit="handleAuth(event)">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" id="auth-email" class="form-input" placeholder="you@example.com" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input type="password" id="auth-password" class="form-input" placeholder="••••••••" required minlength="6">
+      </div>
+      <button type="submit" class="auth-btn" id="auth-btn">
+        <span id="auth-btn-text">Sign In</span>
+      </button>
+    </form>
+    
+    <div class="auth-switch">
+      <span id="auth-switch-text">Don't have an account?</span>
+      <span class="auth-link" onclick="toggleAuthMode()">Sign Up</span>
+    </div>
+  </div>
+
+  <div id="app-screen" class="container" style="display: none;">
     <!-- Status Bar -->
     <div class="card status-bar">
-      <div style="display: flex; gap: 2rem; align-items: center;">
+      <div style="display: flex; gap: 2rem; align-items: center; flex-wrap: wrap;">
+        <span class="user-badge" id="user-email">👤 user@example.com</span>
         <div class="status-item" id="online-status">
           <span class="online">● Online</span>
         </div>
         <div class="status-item" id="sync-status">
           <span style="color: #16a34a;">☁️ Cloud Synced</span>
         </div>
-        <span class="sync-badge cloud">☁️ Supabase Connected</span>
       </div>
       <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-        <button class="btn btn-primary" id="notif-btn" onclick="enableNotifications()">🔔 Enable Notifications</button>
+        <button class="btn btn-primary" id="notif-btn" onclick="enableNotifications()">🔔 Notifications</button>
         <button class="btn btn-success" onclick="exportData()">💾 Export</button>
-        <button class="btn btn-purple" onclick="document.getElementById('import-file').click()">📥 Import</button>
         <button class="btn btn-gray" id="toggle-completed-btn" onclick="toggleCompletedSection()">📋 Show Completed</button>
-        <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importData(event)">
+        <button class="btn btn-red" onclick="signOut()">🚪 Sign Out</button>
       </div>
     </div>
 
@@ -226,9 +349,9 @@
       </div>
     </div>
 
-    <!-- Stats Summary -->
+    <!-- Stats -->
     <div class="card">
-      <h1 style="font-size: 1.875rem; font-weight: bold; margin-bottom: 0.5rem;">TaskMatrix - Cloud Sync</h1>
+      <h1 style="font-size: 1.875rem; font-weight: bold; margin-bottom: 0.5rem;">TaskMatrix - Secure</h1>
       <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
         🏆 Level <span id="level">1</span> • 
         <span id="xp">0</span>/100 XP • 
@@ -266,117 +389,199 @@
       </div>
     </div>
 
-    <!-- Completed Tasks Section -->
+    <!-- Completed Tasks -->
     <div class="card" id="completed-section" style="display: none;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2 style="font-size: 1.5rem; font-weight: bold; color: #374151;">✓ Completed Tasks</h2>
-        <button onclick="clearCompleted()" class="btn btn-red" style="font-size: 0.875rem;">Clear All Completed</button>
+        <button onclick="clearCompleted()" class="btn btn-red" style="font-size: 0.875rem;">Clear All</button>
       </div>
       <div id="completed-tasks-list" style="max-height: 400px; overflow-y: auto;"></div>
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    // Supabase Configuration
+    // Supabase Config
     const SUPABASE_URL = 'https://afnpnivrlmckvwilspfh.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmbnBuaXZybG1ja3Z3aWxzcGZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMwNDY2MDMsImV4cCI6MjA3ODYyMjYwM30.0bFGplQcP4zL6D-3QJIivpY8J1SFwkOIm-p-7Vfsvqg';
-
+    
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    
     // State
+    let currentUser = null;
     let tasks = [];
     let userStats = {xp:0, level:1, totalCompleted:0, weeklyGoal:10, weeklyCompleted:0};
     let draggedTask = null;
     let notificationsEnabled = false;
     let showCompleted = false;
-    let isSyncing = false;
+    let isSignUp = false;
 
-    // Initialize - Load from Supabase
+    // Init
     async function init() {
-      showSyncStatus('loading');
-      try {
-        await loadFromSupabase();
-        showSyncStatus('synced');
-      } catch (error) {
-        console.error('Failed to load from Supabase, using local storage:', error);
-        loadFromLocalStorage();
-        showSyncStatus('offline');
-        
-        // Show user-friendly message
-        setTimeout(function() {
-          const msg = 'ℹ️ Running in offline mode. Make sure you:\n\n1. Created the Supabase tables (ran the SQL)\n2. Have internet connection\n3. API keys are correct\n\nYour tasks are saved locally and will work fine!';
-          console.log(msg);
-        }, 1000);
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session) {
+        currentUser = session.user;
+        showApp();
+        await loadUserData();
+      } else {
+        showAuth();
       }
-      render();
     }
 
-    // Supabase Functions
-    async function loadFromSupabase() {
+    function showAuth() {
+      document.getElementById('auth-screen').style.display = 'block';
+      document.getElementById('app-screen').style.display = 'none';
+    }
+
+    function showApp() {
+      document.getElementById('auth-screen').style.display = 'none';
+      document.getElementById('app-screen').style.display = 'block';
+      document.getElementById('user-email').textContent = '👤 ' + currentUser.email;
+    }
+
+    function toggleAuthMode() {
+      isSignUp = !isSignUp;
+      const btnText = document.getElementById('auth-btn-text');
+      const switchText = document.getElementById('auth-switch-text');
+      
+      if (isSignUp) {
+        btnText.textContent = 'Sign Up';
+        switchText.textContent = 'Already have an account?';
+      } else {
+        btnText.textContent = 'Sign In';
+        switchText.textContent = "Don't have an account?";
+      }
+      hideMessages();
+    }
+
+    async function handleAuth(e) {
+      e.preventDefault();
+      hideMessages();
+      
+      const email = document.getElementById('auth-email').value;
+      const password = document.getElementById('auth-password').value;
+      const btn = document.getElementById('auth-btn');
+      
+      btn.disabled = true;
+      btn.textContent = isSignUp ? 'Creating account...' : 'Signing in...';
+      
       try {
-        const tasksRes = await fetch(SUPABASE_URL + '/rest/v1/tasks?select=*', {
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': 'Bearer ' + SUPABASE_KEY,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (tasksRes.ok) {
-          const tasksData = await tasksRes.json();
-          tasks = tasksData.map(function(t) {
-            return {
-              id: t.id,
-              title: t.title,
-              category: t.category,
-              status: t.status,
-              dueDate: t.due_date,
-              importance: t.importance,
-              urgency: t.urgency
-            };
-          });
+        if (isSignUp) {
+          const { data, error } = await supabase.auth.signUp({ email, password });
+          if (error) throw error;
+          showSuccess('Account created! Check your email to verify.');
         } else {
-          console.log('Tasks table might be empty or not created yet');
-          throw new Error('Failed to fetch tasks');
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          currentUser = data.user;
+          showApp();
+          await loadUserData();
         }
-
-        const statsRes = await fetch(SUPABASE_URL + '/rest/v1/user_stats?select=*&limit=1', {
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': 'Bearer ' + SUPABASE_KEY,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (statsRes.ok) {
-          const statsData = await statsRes.json();
-          if (statsData.length > 0) {
-            const s = statsData[0];
-            userStats = {
-              id: s.id,
-              xp: s.xp || 0,
-              level: s.level || 1,
-              totalCompleted: s.total_completed || 0,
-              weeklyGoal: s.weekly_goal || 10,
-              weeklyCompleted: s.weekly_completed || 0
-            };
-          }
-        }
-
-        // Save to localStorage as backup
-        localStorage.setItem('tasks', JSON.stringify(tasks));
-        localStorage.setItem('userStats', JSON.stringify(userStats));
       } catch (error) {
-        console.error('Supabase load error:', error);
-        throw error;
+        showError(error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = isSignUp ? 'Sign Up' : 'Sign In';
+      }
+    }
+
+    async function signOut() {
+      if (confirm('Sign out?')) {
+        await supabase.auth.signOut();
+        currentUser = null;
+        tasks = [];
+        showAuth();
+      }
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error-message');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function showSuccess(msg) {
+      const el = document.getElementById('success-message');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function hideMessages() {
+      document.getElementById('error-message').style.display = 'none';
+      document.getElementById('success-message').style.display = 'none';
+    }
+
+    async function loadUserData() {
+      showSyncStatus('loading');
+      try {
+        // Load tasks
+        const { data: tasksData, error: tasksError } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('user_id', currentUser.id);
+        
+        if (tasksError) throw tasksError;
+        
+        tasks = (tasksData || []).map(t => ({
+          id: t.id,
+          title: t.title,
+          category: t.category,
+          status: t.status,
+          dueDate: t.due_date,
+          importance: t.importance,
+          urgency: t.urgency
+        }));
+
+        // Load or create stats
+        const { data: statsData, error: statsError } = await supabase
+          .from('user_stats')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .single();
+        
+        if (statsData) {
+          userStats = {
+            id: statsData.id,
+            xp: statsData.xp || 0,
+            level: statsData.level || 1,
+            totalCompleted: statsData.total_completed || 0,
+            weeklyGoal: statsData.weekly_goal || 10,
+            weeklyCompleted: statsData.weekly_completed || 0
+          };
+        } else {
+          // Create initial stats
+          const { data: newStats } = await supabase
+            .from('user_stats')
+            .insert([{
+              user_id: currentUser.id,
+              xp: 0,
+              level: 1,
+              total_completed: 0,
+              weekly_goal: 10,
+              weekly_completed: 0
+            }])
+            .select()
+            .single();
+          
+          if (newStats) {
+            userStats.id = newStats.id;
+          }
+        }
+
+        showSyncStatus('synced');
+        render();
+      } catch (error) {
+        console.error('Load error:', error);
+        showSyncStatus('error');
       }
     }
 
     async function syncTaskToSupabase(task) {
-      if (isSyncing) return;
-      showSyncStatus('syncing');
-      
       try {
         const payload = {
           id: task.id,
+          user_id: currentUser.id,
           title: task.title,
           category: task.category,
           status: task.status,
@@ -385,38 +590,23 @@
           urgency: task.urgency
         };
 
-        const response = await fetch(SUPABASE_URL + '/rest/v1/tasks', {
-          method: 'POST',
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': 'Bearer ' + SUPABASE_KEY,
-            'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates'
-          },
-          body: JSON.stringify(payload)
-        });
+        const { error } = await supabase
+          .from('tasks')
+          .upsert(payload);
 
-        if (response.ok) {
-          showSyncStatus('synced');
-        } else {
-          throw new Error('Sync failed');
-        }
+        if (error) throw error;
       } catch (error) {
         console.error('Sync error:', error);
-        showSyncStatus('error');
-        setTimeout(function() { showSyncStatus('synced'); }, 3000);
       }
     }
 
     async function deleteTaskFromSupabase(id) {
       try {
-        await fetch(SUPABASE_URL + '/rest/v1/tasks?id=eq.' + id, {
-          method: 'DELETE',
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': 'Bearer ' + SUPABASE_KEY
-          }
-        });
+        await supabase
+          .from('tasks')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', currentUser.id);
       } catch (error) {
         console.error('Delete error:', error);
       }
@@ -426,40 +616,19 @@
       if (!userStats.id) return;
       
       try {
-        const payload = {
-          xp: userStats.xp,
-          level: userStats.level,
-          total_completed: userStats.totalCompleted,
-          weekly_goal: userStats.weeklyGoal,
-          weekly_completed: userStats.weeklyCompleted
-        };
-
-        await fetch(SUPABASE_URL + '/rest/v1/user_stats?id=eq.' + userStats.id, {
-          method: 'PATCH',
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': 'Bearer ' + SUPABASE_KEY,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        });
+        await supabase
+          .from('user_stats')
+          .update({
+            xp: userStats.xp,
+            level: userStats.level,
+            total_completed: userStats.totalCompleted,
+            weekly_goal: userStats.weeklyGoal,
+            weekly_completed: userStats.weeklyCompleted
+          })
+          .eq('id', userStats.id)
+          .eq('user_id', currentUser.id);
       } catch (error) {
         console.error('Stats sync error:', error);
-      }
-    }
-
-    function loadFromLocalStorage() {
-      const savedTasks = localStorage.getItem('tasks');
-      const savedStats = localStorage.getItem('userStats');
-      
-      if (savedTasks) tasks = JSON.parse(savedTasks);
-      if (savedStats) userStats = JSON.parse(savedStats);
-      
-      if (tasks.length === 0) {
-        tasks = [
-          { id: Date.now(), title: 'Submit Q4 budget', category: 'work', status: 'todo', dueDate: '2025-10-25', importance: 5, urgency: 5 },
-          { id: Date.now() + 1, title: 'Health checkup', category: 'health', status: 'todo', dueDate: '2025-10-28', importance: 4, urgency: 2 },
-        ];
       }
     }
 
@@ -470,25 +639,10 @@
       } else if (status === 'syncing') {
         el.innerHTML = '<span class="syncing">⟳ Syncing...</span>';
       } else if (status === 'synced') {
-        el.innerHTML = '<span style="color: #16a34a;">☁️ Cloud Synced</span>';
-      } else if (status === 'offline') {
-        el.innerHTML = '<span style="color: #ea580c;">📱 Offline Mode</span>';
+        el.innerHTML = '<span style="color: #16a34a;">☁️ Synced</span>';
       } else if (status === 'error') {
-        el.innerHTML = '<span style="color: #dc2626;">⚠️ Sync Error</span>';
+        el.innerHTML = '<span style="color: #dc2626;">⚠️ Error</span>';
       }
-    }
-
-    function saveTasks() {
-      localStorage.setItem('tasks', JSON.stringify(tasks));
-      
-      tasks.forEach(function(task) {
-        syncTaskToSupabase(task);
-      });
-    }
-
-    function saveStats() {
-      localStorage.setItem('userStats', JSON.stringify(userStats));
-      syncStatsToSupabase();
     }
 
     function getQuad(imp, urg) {
@@ -499,7 +653,7 @@
     }
 
     function toggleStatus(id) {
-      const task = tasks.find(function(t) { return t.id === id; });
+      const task = tasks.find(t => t.id === id);
       if (!task) return;
 
       if (task.status === 'todo') {
@@ -514,7 +668,7 @@
         task.status = 'todo';
       }
 
-      saveTasks();
+      syncTaskToSupabase(task);
       render();
       if (showCompleted) renderCompletedTasks();
     }
@@ -530,14 +684,13 @@
       userStats.level = Math.floor(userStats.xp / 100) + 1;
       userStats.totalCompleted++;
       userStats.weeklyCompleted++;
-      saveStats();
+      syncStatsToSupabase();
     }
 
     function deleteTask(id) {
       if (confirm('Delete this task?')) {
-        tasks = tasks.filter(function(t) { return t.id !== id; });
+        tasks = tasks.filter(t => t.id !== id);
         deleteTaskFromSupabase(id);
-        saveTasks();
         render();
         if (showCompleted) renderCompletedTasks();
       }
@@ -562,8 +715,8 @@
       };
 
       tasks.push(newTask);
+      syncTaskToSupabase(newTask);
       input.value = '';
-      saveTasks();
       render();
     }
 
@@ -589,7 +742,7 @@
     }
 
     function renderCompletedTasks() {
-      const completedTasks = tasks.filter(function(t) { return t.status === 'completed'; });
+      const completedTasks = tasks.filter(t => t.status === 'completed');
       const container = document.getElementById('completed-tasks-list');
       
       if (completedTasks.length === 0) {
@@ -598,30 +751,27 @@
       }
       
       container.innerHTML = completedTasks.map(function(task) {
-        return '<div class="task ' + task.category + '" style="opacity: 0.8;"><div class="task-content"><button class="task-status-btn" onclick="toggleStatus(' + task.id + ')"><span style="color: #16a34a; font-size: 1.25rem;">✓</span></button><div class="task-info"><div class="task-title completed">' + task.title + '</div><div style="font-size: 0.75rem; color: #9ca3af; margin-top: 0.25rem;">Completed • ' + task.category + '</div></div><button class="task-delete" onclick="deleteTask(' + task.id + ')">×</button></div></div>';
+        return '<div class="task ' + task.category + '" style="opacity: 0.8;"><div class="task-content"><button class="task-status-btn" onclick="toggleStatus(' + task.id + ')"><span style="color: #16a34a; font-size: 1.25rem;">✓</span></button><div class="task-info"><div class="task-title completed">' + task.title + '</div></div><button class="task-delete" onclick="deleteTask(' + task.id + ')">×</button></div></div>';
       }).join('');
     }
 
     function clearCompleted() {
-      const completedTasks = tasks.filter(function(t) { return t.status === 'completed'; });
+      const completedTasks = tasks.filter(t => t.status === 'completed');
       if (completedTasks.length === 0) {
         alert('No completed tasks to clear');
         return;
       }
       
-      if (confirm('Delete all ' + completedTasks.length + ' completed tasks? This cannot be undone.')) {
-        completedTasks.forEach(function(task) {
-          deleteTaskFromSupabase(task.id);
-        });
-        tasks = tasks.filter(function(t) { return t.status !== 'completed'; });
-        saveTasks();
+      if (confirm('Delete all ' + completedTasks.length + ' completed tasks?')) {
+        completedTasks.forEach(task => deleteTaskFromSupabase(task.id));
+        tasks = tasks.filter(t => t.status !== 'completed');
         renderCompletedTasks();
         render();
       }
     }
 
     function exportData() {
-      const data = JSON.stringify({ tasks: tasks, userStats: userStats }, null, 2);
+      const data = JSON.stringify({ tasks, userStats }, null, 2);
       const blob = new Blob([data], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -631,42 +781,12 @@
       URL.revokeObjectURL(url);
     }
 
-    function importData(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        try {
-          const data = JSON.parse(e.target.result);
-          
-          if (!data.tasks || !Array.isArray(data.tasks)) {
-            alert('❌ Invalid backup file');
-            return;
-          }
-          
-          if (confirm('Import backup and sync to cloud? This will replace current data.')) {
-            tasks = data.tasks;
-            userStats = data.userStats || userStats;
-            saveTasks();
-            saveStats();
-            render();
-            alert('✅ Import successful and synced to cloud!');
-          }
-        } catch (error) {
-          alert('❌ Import failed: ' + error.message);
-        }
-        event.target.value = '';
-      };
-      reader.readAsText(file);
-    }
-
     function enableNotifications() {
       if ('Notification' in window && Notification.permission !== 'granted') {
         Notification.requestPermission().then(function(permission) {
           if (permission === 'granted') {
             notificationsEnabled = true;
-            document.getElementById('notif-btn').textContent = '🔔 Notifications On';
+            document.getElementById('notif-btn').textContent = '🔔 Enabled';
             document.getElementById('notif-btn').disabled = true;
             new Notification('TaskMatrix', { body: 'Notifications enabled!' });
           }
@@ -677,18 +797,10 @@
     function drag(e, task) {
       draggedTask = task;
       e.dataTransfer.effectAllowed = 'move';
-      const quadrants = document.querySelectorAll('.quadrant');
-      for (var i = 0; i < quadrants.length; i++) {
-        quadrants[i].classList.add('drag-over');
-      }
     }
 
     function dragEnd() {
       draggedTask = null;
-      const quadrants = document.querySelectorAll('.quadrant');
-      for (var i = 0; i < quadrants.length; i++) {
-        quadrants[i].classList.remove('drag-over');
-      }
     }
 
     function allowDrop(e) {
@@ -699,40 +811,39 @@
       e.preventDefault();
       if (!draggedTask) return;
 
-      var imp = 3;
-      var urg = 3;
+      let imp = 3, urg = 3;
       if (quad === 'do-first') { imp = 5; urg = 5; }
       else if (quad === 'schedule') { imp = 5; urg = 2; }
       else if (quad === 'delegate') { imp = 2; urg = 5; }
       else if (quad === 'eliminate') { imp = 2; urg = 2; }
 
-      const task = tasks.find(function(t) { return t.id === draggedTask.id; });
+      const task = tasks.find(t => t.id === draggedTask.id);
       if (task) {
         task.importance = imp;
         task.urgency = urg;
+        syncTaskToSupabase(task);
       }
 
       draggedTask = null;
-      saveTasks();
       render();
     }
 
     function render() {
-      const activeTasks = tasks.filter(function(t) { return t.status !== 'completed'; });
+      const activeTasks = tasks.filter(t => t.status !== 'completed');
       
       const quadrants = {
-        'do-first': activeTasks.filter(function(t) { return getQuad(t.importance, t.urgency) === 'do-first'; }),
-        'schedule': activeTasks.filter(function(t) { return getQuad(t.importance, t.urgency) === 'schedule'; }),
-        'delegate': activeTasks.filter(function(t) { return getQuad(t.importance, t.urgency) === 'delegate'; }),
-        'eliminate': activeTasks.filter(function(t) { return getQuad(t.importance, t.urgency) === 'eliminate'; })
+        'do-first': activeTasks.filter(t => getQuad(t.importance, t.urgency) === 'do-first'),
+        'schedule': activeTasks.filter(t => getQuad(t.importance, t.urgency) === 'schedule'),
+        'delegate': activeTasks.filter(t => getQuad(t.importance, t.urgency) === 'delegate'),
+        'eliminate': activeTasks.filter(t => getQuad(t.importance, t.urgency) === 'eliminate')
       };
 
-      var quadKeys = ['do-first', 'schedule', 'delegate', 'eliminate'];
-      for (var i = 0; i < quadKeys.length; i++) {
-        var quad = quadKeys[i];
-        var container = document.getElementById('tasks-' + quad);
-        var countId = quad === 'do-first' ? 'count-first' : 'count-' + quad;
-        var count = document.getElementById(countId);
+      const quadKeys = ['do-first', 'schedule', 'delegate', 'eliminate'];
+      for (let i = 0; i < quadKeys.length; i++) {
+        const quad = quadKeys[i];
+        const container = document.getElementById('tasks-' + quad);
+        const countId = quad === 'do-first' ? 'count-first' : 'count-' + quad;
+        const count = document.getElementById(countId);
         
         if (!container || !count) continue;
         
@@ -741,14 +852,14 @@
         if (quadrants[quad].length === 0) {
           container.innerHTML = '<div class="empty-state">Drag tasks here</div>';
         } else {
-          var html = '';
-          for (var j = 0; j < quadrants[quad].length; j++) {
-            var task = quadrants[quad][j];
-            var statusIcon = task.status === 'completed' ? '✓' : task.status === 'in-progress' ? '⏱' : '○';
-            var statusColor = task.status === 'completed' ? '#16a34a' : task.status === 'in-progress' ? '#3b82f6' : '#9ca3af';
+          let html = '';
+          for (let j = 0; j < quadrants[quad].length; j++) {
+            const task = quadrants[quad][j];
+            const statusIcon = task.status === 'completed' ? '✓' : task.status === 'in-progress' ? '⏱' : '○';
+            const statusColor = task.status === 'completed' ? '#16a34a' : task.status === 'in-progress' ? '#3b82f6' : '#9ca3af';
             
-            var taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
-            html += '<div class="task ' + task.category + '" draggable="true" ondragstart="drag(event, ' + taskJson + ')" ondragend="dragEnd()"><div class="task-content"><button class="task-status-btn" onclick="toggleStatus(' + task.id + ')"><span style="color: ' + statusColor + '; font-size: 1.25rem;">' + statusIcon + '</span></button><div class="task-info"><div class="task-title ' + (task.status === 'completed' ? 'completed' : '') + '">' + task.title + '</div></div><button class="task-delete" onclick="deleteTask(' + task.id + ')">×</button></div></div>';
+            const taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
+            html += '<div class="task ' + task.category + '" draggable="true" ondragstart="drag(event, ' + taskJson + ')" ondragend="dragEnd()"><div class="task-content"><button class="task-status-btn" onclick="toggleStatus(' + task.id + ')"><span style="color: ' + statusColor + '; font-size: 1.25rem;">' + statusIcon + '</span></button><div class="task-info"><div class="task-title">' + task.title + '</div></div><button class="task-delete" onclick="deleteTask(' + task.id + ')">×</button></div></div>';
           }
           container.innerHTML = html;
         }
@@ -764,21 +875,19 @@
       document.getElementById('completed').textContent = userStats.totalCompleted;
       document.getElementById('weekly-progress').textContent = userStats.weeklyCompleted + '/' + userStats.weeklyGoal;
       
-      var progressPercent = Math.min(100, (userStats.weeklyCompleted / userStats.weeklyGoal) * 100);
+      const progressPercent = Math.min(100, (userStats.weeklyCompleted / userStats.weeklyGoal) * 100);
       document.getElementById('progress-fill').style.width = progressPercent + '%';
     }
 
     window.addEventListener('online', function() {
       document.getElementById('online-status').innerHTML = '<span class="online">● Online</span>';
-      showSyncStatus('synced');
     });
 
     window.addEventListener('offline', function() {
       document.getElementById('online-status').innerHTML = '<span class="offline">● Offline</span>';
-      showSyncStatus('offline');
     });
 
-    // Initialize on page load
+    // Initialize
     init();
   </script>
 </body>
