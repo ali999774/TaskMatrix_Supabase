@@ -1,0 +1,3704 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskMatrix</title>
+  <style>
+    :root {
+      /* Base Colors */
+      --bg-body: linear-gradient(135deg, #f8fafc, #dbeafe);
+      --bg-card: #ffffff;
+      --bg-glass: rgba(255, 255, 255, 0.9);
+      --text-primary: #111827;
+      --text-secondary: #374151;
+      --text-muted: #6b7280;
+      --border-color: #e5e7eb;
+      --border-input: #d1d5db;
+
+      /* Brand Colors */
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --primary-light: #eff6ff;
+      --primary-dark: #1e40af;
+
+      /* Status Colors */
+      --success: #16a34a;
+      --success-bg: #dcfce7;
+      --warning: #f59e0b;
+      --warning-bg: #fffbeb;
+      --danger: #ef4444;
+      --danger-bg: #fef2f2;
+
+      /* Quadrant Colors */
+      --quad-red-bg: #fef2f2;
+      --quad-red-border: #fca5a5;
+      --quad-red-header: #fee2e2;
+      --quad-red-text: #991b1b;
+
+      --quad-blue-bg: #eff6ff;
+      --quad-blue-border: #93c5fd;
+      --quad-blue-header: #dbeafe;
+      --quad-blue-text: #1e3a8a;
+
+      --quad-yellow-bg: #fefce8;
+      --quad-yellow-border: #fde047;
+      --quad-yellow-header: #fef9c3;
+      --quad-yellow-text: #854d0e;
+
+      --quad-gray-bg: #f9fafb;
+      --quad-gray-border: #d1d5db;
+      --quad-gray-header: #f3f4f6;
+      --quad-gray-text: #374151;
+
+      /* Note Colors */
+      --note-yellow-bg: #fef9c3;
+      --note-yellow-border: #fde047;
+      --note-pink-bg: #fce7f3;
+      --note-pink-border: #f9a8d4;
+      --note-blue-bg: #dbeafe;
+      --note-blue-border: #93c5fd;
+      --note-green-bg: #d1fae5;
+      --note-green-border: #6ee7b7;
+      --note-purple-bg: #e9d5ff;
+      --note-purple-border: #c084fc;
+
+      /* Note Category Colors */
+      --cat-ideas-bg: #fef9c3;
+      --cat-ideas-border: #fde047;
+      --cat-tasks-bg: #dbeafe;
+      --cat-tasks-border: #93c5fd;
+      --cat-reference-bg: #e9d5ff;
+      --cat-reference-border: #c084fc;
+      --cat-notes-bg: #f3f4f6;
+      --cat-notes-border: #d1d5db;
+      --cat-quick-bg: #fed7aa;
+      --cat-quick-border: #fb923c;
+    }
+
+    [data-theme="dark"] {
+      /* Base Colors */
+      --bg-body: linear-gradient(135deg, #0f172a, #1e293b);
+      --bg-card: #1e293b;
+      --bg-glass: rgba(30, 41, 59, 0.9);
+      --text-primary: #f9fafb;
+      --text-secondary: #e2e8f0;
+      --text-muted: #94a3b8;
+      --border-color: #334155;
+      --border-input: #475569;
+
+      /* Brand Colors */
+      --primary: #60a5fa;
+      --primary-hover: #3b82f6;
+      --primary-light: rgba(59, 130, 246, 0.1);
+      --primary-dark: #93c5fd;
+
+      /* Status Colors */
+      --success: #4ade80;
+      --success-bg: rgba(22, 163, 74, 0.2);
+      --warning: #fbbf24;
+      --warning-bg: rgba(245, 158, 11, 0.2);
+      --danger: #f87171;
+      --danger-bg: rgba(239, 68, 68, 0.2);
+
+      /* Quadrant Colors */
+      --quad-red-bg: rgba(153, 27, 27, 0.1);
+      --quad-red-border: #7f1d1d;
+      --quad-red-header: rgba(153, 27, 27, 0.2);
+      --quad-red-text: #fca5a5;
+
+      --quad-blue-bg: rgba(30, 58, 138, 0.1);
+      --quad-blue-border: #1e3a8a;
+      --quad-blue-header: rgba(30, 58, 138, 0.2);
+      --quad-blue-text: #93c5fd;
+
+      --quad-yellow-bg: rgba(133, 77, 14, 0.1);
+      --quad-yellow-border: #713f12;
+      --quad-yellow-header: rgba(133, 77, 14, 0.2);
+      --quad-yellow-text: #fde047;
+
+      --quad-gray-bg: rgba(55, 65, 81, 0.1);
+      --quad-gray-border: #4b5563;
+      --quad-gray-header: rgba(55, 65, 81, 0.2);
+      --quad-gray-text: #d1d5db;
+
+      /* Note Colors */
+      --note-yellow-bg: rgba(254, 249, 195, 0.1);
+      --note-yellow-border: #854d0e;
+      --note-pink-bg: rgba(252, 231, 243, 0.1);
+      --note-pink-border: #831843;
+      --note-blue-bg: rgba(219, 234, 254, 0.1);
+      --note-blue-border: #1e40af;
+      --note-green-bg: rgba(209, 250, 229, 0.1);
+      --note-green-border: #065f46;
+      --note-purple-bg: rgba(233, 213, 255, 0.1);
+      --note-purple-border: #6b21a8;
+
+      /* Note Category Colors */
+      --cat-ideas-bg: rgba(254, 249, 195, 0.1);
+      --cat-ideas-border: #854d0e;
+      --cat-tasks-bg: rgba(219, 234, 254, 0.1);
+      --cat-tasks-border: #1e40af;
+      --cat-reference-bg: rgba(233, 213, 255, 0.1);
+      --cat-reference-border: #6b21a8;
+      --cat-notes-bg: rgba(55, 65, 81, 0.1);
+      --cat-notes-border: #4b5563;
+      --cat-quick-bg: rgba(254, 215, 170, 0.1);
+      --cat-quick-border: #c2410c;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: var(--bg-body);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding-top: 70px;
+      padding-bottom: 24px;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Top Bar */
+    .zen-top-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-glass);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border-color);
+      z-index: 100;
+      padding: 12px 24px;
+    }
+
+    .zen-top-content {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .zen-logo {
+      font-size: 20px;
+      font-weight: bold;
+      color: var(--primary-dark);
+      white-space: nowrap;
+    }
+
+    .quick-add-input {
+      flex: 1;
+      padding: 10px 16px;
+      border: 2px solid var(--border-input);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-radius: 8px;
+      font-size: 14px;
+      min-width: 200px;
+    }
+
+    .quick-add-input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .zen-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .status-indicator {
+      width: 24px;
+      height: 24px;
+      background: var(--success);
+      border-radius: 50%;
+      border: 2px solid var(--bg-card);
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 0 0 2px var(--success-bg);
+    }
+
+    .status-indicator:hover {
+      transform: scale(1.1);
+    }
+
+    .zen-icon-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      color: var(--text-muted);
+      font-size: 20px;
+      line-height: 1;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .zen-icon-btn:hover {
+      background: var(--quad-gray-bg);
+      color: var(--text-secondary);
+    }
+
+    /* Status Dropdown */
+    .status-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      min-width: 300px;
+      z-index: 200;
+      display: none;
+      margin-top: 8px;
+      padding: 16px;
+    }
+
+    .status-dropdown.show {
+      display: block;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+
+    /* Menu Dropdown */
+    .menu-dropdown {
+      position: relative;
+    }
+
+    .menu-dropdown-content {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      min-width: 200px;
+      z-index: 200;
+      display: none;
+      margin-top: 8px;
+    }
+
+    .menu-dropdown-content.show {
+      display: block;
+    }
+
+    .menu-item {
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+
+    .menu-item:hover {
+      background: var(--quad-gray-bg);
+    }
+
+    .menu-item:first-child {
+      border-radius: 8px 8px 0 0;
+    }
+
+    .menu-item:last-child {
+      border-radius: 0 0 8px 8px;
+    }
+
+    /* Floating Badges */
+    .floating-badges {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 90;
+    }
+
+    @media (max-width: 768px) {
+      .floating-badges {
+        bottom: 16px;
+        right: 16px;
+        gap: 10px;
+      }
+    }
+
+    .floating-badge {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      transition: all 0.3s;
+      background: var(--bg-card);
+      border: 2px solid var(--border-color);
+    }
+
+    .floating-badge:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .floating-badge.stats {
+      background: var(--quad-yellow-header);
+      border-color: var(--warning);
+    }
+
+    .floating-badge.notes {
+      background: var(--quad-blue-header);
+      border-color: var(--primary);
+    }
+
+    @media (max-width: 768px) {
+      .floating-badge {
+        width: 48px;
+        height: 48px;
+        font-size: 20px;
+      }
+
+      .floating-badges {
+        bottom: 16px;
+        right: 16px;
+        gap: 10px;
+      }
+    }
+
+    /* Stats Popup */
+    .stats-popup {
+      position: fixed;
+      bottom: 100px;
+      right: 24px;
+      background: var(--bg-card);
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+      padding: 20px;
+      min-width: 320px;
+      z-index: 95;
+      display: none;
+    }
+
+    .stats-popup.show {
+      display: block;
+      animation: slideUp 0.3s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .stats-popup-header {
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--primary-dark);
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .stats-grid-popup {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .stat-box-popup {
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .stat-box-popup.red {
+      background: var(--quad-red-bg);
+      color: var(--quad-red-text);
+    }
+
+    .stat-box-popup.blue {
+      background: var(--quad-blue-bg);
+      color: var(--quad-blue-text);
+    }
+
+    .stat-box-popup.yellow {
+      background: var(--quad-yellow-bg);
+      color: var(--quad-yellow-text);
+    }
+
+    .stat-box-popup.gray {
+      background: var(--quad-gray-bg);
+      color: var(--quad-gray-text);
+    }
+
+    .stat-number-popup {
+      font-size: 24px;
+      font-weight: bold;
+    }
+
+    .stat-label-popup {
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
+    .xp-bar {
+      background: var(--border-color);
+      height: 8px;
+      border-radius: 9999px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+
+    .xp-fill {
+      background: linear-gradient(90deg, var(--primary), #8b5cf6);
+      height: 100%;
+      transition: width 0.5s;
+    }
+
+    .weekly-bar {
+      background: var(--warning-bg);
+      height: 8px;
+      border-radius: 9999px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+
+    .weekly-fill {
+      background: var(--warning);
+      height: 100%;
+      transition: width 0.5s;
+    }
+
+    /* Search */
+    .search-container {
+      background: var(--bg-card);
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      margin-bottom: 24px;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .search-container.collapsed {
+      max-height: 0;
+      margin-bottom: 0;
+      opacity: 0;
+    }
+
+    .search-container.expanded {
+      max-height: 200px;
+      opacity: 1;
+    }
+
+    .search-content {
+      padding: 16px;
+    }
+
+    .search-filter-bar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .search-input,
+    .filter-select {
+      padding: 10px 12px;
+      border: 2px solid var(--border-input);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .search-input {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .clear-btn {
+      padding: 10px 16px;
+      background: var(--quad-gray-bg);
+      color: var(--text-primary);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .clear-btn:hover {
+      background: var(--border-color);
+    }
+
+    /* Matrix */
+    .card {
+      background: var(--bg-card);
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      padding: 0;
+      margin-bottom: 24px;
+    }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+      padding: 24px;
+    }
+
+    @media (max-width: 768px) {
+      .matrix {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .quadrant {
+      border-radius: 8px;
+      border: 2px solid;
+      overflow: hidden;
+    }
+
+    .quadrant.red {
+      background: var(--quad-red-bg);
+      border-color: var(--quad-red-border);
+    }
+
+    .quadrant.blue {
+      background: var(--quad-blue-bg);
+      border-color: var(--quad-blue-border);
+    }
+
+    .quadrant.yellow {
+      background: var(--quad-yellow-bg);
+      border-color: var(--quad-yellow-border);
+    }
+
+    .quadrant.gray {
+      background: var(--quad-gray-bg);
+      border-color: var(--quad-gray-border);
+    }
+
+    .quad-header {
+      padding: 16px;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .quad-header.red {
+      background: var(--quad-red-header);
+      color: var(--quad-red-text);
+    }
+
+    .quad-header.blue {
+      background: var(--quad-blue-header);
+      color: var(--quad-blue-text);
+    }
+
+    .quad-header.yellow {
+      background: var(--quad-yellow-header);
+      color: var(--quad-yellow-text);
+    }
+
+    .quad-header.gray {
+      background: var(--quad-gray-header);
+      color: var(--quad-gray-text);
+    }
+
+    .quad-body {
+      padding: 16px;
+      min-height: 200px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    /* Tasks */
+    .task {
+      background: var(--bg-card);
+      padding: 8px 12px;
+      border-radius: 8px;
+      border-left: 4px solid;
+      margin-bottom: 8px;
+      cursor: move;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      position: relative;
+      color: var(--text-primary);
+    }
+
+    .task.work {
+      border-left-color: var(--primary);
+    }
+
+    .task.health {
+      border-left-color: var(--success);
+    }
+
+    .task.learning {
+      border-left-color: #ea580c;
+    }
+
+    .task.personal {
+      border-left-color: #9333ea;
+    }
+
+    .task.overdue {
+      border-left-width: 6px;
+      border-left-color: var(--danger) !important;
+      background: var(--danger-bg);
+    }
+
+    .task.due-today {
+      border-left-width: 6px;
+      border-left-color: var(--warning) !important;
+      background: var(--warning-bg);
+    }
+
+    .task.due-soon {
+      border-left-width: 6px;
+      border-left-color: var(--primary) !important;
+      background: var(--primary-light);
+    }
+
+    .task.pinned {
+      border-top: 3px solid var(--warning);
+    }
+
+    .task-content {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .task-info {
+      flex: 1;
+      cursor: pointer;
+    }
+
+    .task-info:hover {
+      opacity: 0.8;
+    }
+
+    .task-title {
+      font-weight: 500;
+    }
+
+    .task-title.completed {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+
+    .due-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    .due-badge.overdue {
+      background: var(--quad-red-header);
+      color: var(--quad-red-text);
+    }
+
+    .due-badge.today {
+      background: var(--quad-yellow-header);
+      color: var(--quad-yellow-text);
+    }
+
+    .due-badge.soon {
+      background: var(--quad-blue-header);
+      color: var(--quad-blue-text);
+    }
+
+    .recurring-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 8px;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 32px;
+    }
+
+    button.pin-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: var(--text-muted);
+      font-size: 16px;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .task:hover button.pin-btn {
+      opacity: 1;
+    }
+
+    button.pin-btn.pinned {
+      opacity: 1;
+      color: var(--warning);
+    }
+
+    button.pin-btn:hover {
+      color: var(--warning);
+    }
+
+    button.icon-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: var(--text-muted);
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    button.icon-btn:hover {
+      color: var(--text-secondary);
+    }
+
+    /* Sort Dropdown */
+    .sort-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+
+    .sort-dropdown-btn {
+      background: var(--bg-card);
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 16px;
+      color: var(--text-muted);
+      line-height: 1;
+    }
+
+    .sort-dropdown-btn:hover {
+      background: var(--quad-gray-bg);
+    }
+
+    .sort-dropdown-menu {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      min-width: 150px;
+      z-index: 100;
+      display: none;
+      margin-top: 4px;
+    }
+
+    .sort-dropdown-menu.show {
+      display: block;
+    }
+
+    .sort-dropdown-item {
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+
+    .sort-dropdown-item:hover {
+      background: var(--quad-gray-bg);
+    }
+
+    .sort-dropdown-item.active {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-weight: 600;
+    }
+
+    .sort-dropdown-item .checkmark {
+      visibility: hidden;
+    }
+
+    .sort-dropdown-item.active .checkmark {
+      visibility: visible;
+    }
+
+    /* Completed Section */
+    .completed-section {
+      background: var(--bg-card);
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      padding: 24px;
+      margin-bottom: 24px;
+      display: none;
+    }
+
+    .completed-section.show {
+      display: block;
+    }
+
+    /* Notes Modal */
+    .notes-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 16px;
+    }
+
+    .notes-modal.active {
+      display: flex;
+    }
+
+    .notes-container {
+      background: var(--bg-card);
+      border-radius: 16px;
+      max-width: 900px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    }
+
+    .notes-header {
+      padding: 24px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .notes-title {
+      font-size: 24px;
+      font-weight: bold;
+      color: var(--text-primary);
+    }
+
+    .notes-header-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .notes-body {
+      padding: 24px;
+    }
+
+    .notes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .note-card {
+      padding: 16px;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      transition: all 0.2s;
+      position: relative;
+      min-height: 120px;
+      max-height: 200px;
+      overflow: hidden;
+    }
+
+    .note-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .note-card:hover .note-delete-btn {
+      opacity: 1;
+    }
+
+    .note-delete-btn {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(239, 68, 68, 0.9);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 10;
+    }
+
+    .note-delete-btn:hover {
+      transform: scale(1.1);
+      background: rgba(220, 38, 38, 1);
+    }
+
+    .note-card.yellow {
+      background: var(--note-yellow-bg);
+      border: 2px solid var(--note-yellow-border);
+    }
+
+    .note-card.pink {
+      background: var(--note-pink-bg);
+      border: 2px solid var(--note-pink-border);
+    }
+
+    .note-card.blue {
+      background: var(--note-blue-bg);
+      border: 2px solid var(--note-blue-border);
+    }
+
+    .note-card.green {
+      background: var(--note-green-bg);
+      border: 2px solid var(--note-green-border);
+    }
+
+    .note-card.purple {
+      background: var(--note-purple-bg);
+      border: 2px solid var(--note-purple-border);
+    }
+
+    .note-card-header {
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+
+    .note-card-content {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .note-card-footer {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 12px;
+    }
+
+    .new-note-btn {
+      padding: 40px;
+      border: 2px dashed var(--border-input);
+      border-radius: 12px;
+      background: var(--quad-gray-bg);
+      cursor: pointer;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 16px;
+      transition: all 0.2s;
+    }
+
+    .new-note-btn:hover {
+      background: var(--border-color);
+      border-color: var(--text-muted);
+      color: var(--text-secondary);
+    }
+
+    .notes-search {
+      padding: 12px 16px;
+      border: 2px solid var(--border-input);
+      border-radius: 8px;
+      font-size: 14px;
+      width: 100%;
+      margin-top: 16px;
+      background: var(--bg-card);
+      color: var(--text-primary);
+    }
+
+    .notes-search:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .pinned-notes-section {
+      margin-top: 0;
+      display: none;
+      padding: 24px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .pinned-notes-section.has-notes {
+      display: block;
+    }
+
+    .pinned-notes-header {
+      font-size: 20px;
+      font-weight: bold;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pinned-notes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 16px;
+    }
+
+    /* Note Edit Modal */
+    .modal-overlay,
+    .note-edit-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .modal-overlay.active,
+    .note-edit-modal.active {
+      opacity: 1;
+      pointer-events: auto;
+      z-index: 1001;
+    }
+
+    .note-edit-container {
+      background: var(--bg-card);
+      border-radius: 16px;
+      max-width: 600px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    }
+
+    .note-edit-header {
+      padding: 24px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .note-edit-body {
+      padding: 24px;
+    }
+
+    .note-title-input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid var(--border-input);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .note-title-input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .note-content-input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid var(--border-input);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-radius: 8px;
+      font-size: 14px;
+      min-height: 200px;
+      resize: vertical;
+      font-family: inherit;
+      line-height: 1.6;
+    }
+
+    .note-content-input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .note-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 8px;
+      background: var(--quad-gray-bg);
+      border-radius: 8px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-btn {
+      padding: 6px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-input);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .toolbar-btn:hover {
+      background: var(--primary-light);
+      border-color: var(--primary);
+      color: var(--primary-dark);
+    }
+
+    .note-preview {
+      padding: 12px;
+      border: 2px solid var(--border-input);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-radius: 8px;
+      min-height: 200px;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .note-preview ul {
+      margin-left: 20px;
+      margin-top: 8px;
+      margin-bottom: 8px;
+    }
+
+    .note-preview li {
+      margin-bottom: 4px;
+    }
+
+    .note-preview input[type="checkbox"] {
+      margin-right: 8px;
+      cursor: pointer;
+      width: 16px;
+      height: 16px;
+    }
+
+    .note-preview .checked-item {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+
+    .note-preview ol {
+      margin-left: 20px;
+      margin-top: 8px;
+      margin-bottom: 8px;
+      list-style-type: decimal;
+    }
+
+    .note-preview p {
+      margin-bottom: 8px;
+    }
+
+    .note-preview h3, .note-preview h4 {
+      margin-top: 12px;
+      margin-bottom: 8px;
+    }
+
+    .view-toggle {
+      display: flex;
+      gap: 4px;
+      background: var(--quad-gray-bg);
+      padding: 4px;
+      border-radius: 6px;
+    }
+
+    .view-toggle-btn {
+      padding: 6px 12px;
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+    }
+
+    .view-toggle-btn.active {
+      background: var(--bg-card);
+      color: var(--primary-dark);
+      font-weight: 600;
+    }
+
+    .category-selector {
+      display: flex;
+      gap: 8px;
+      margin: 16px 0;
+      flex-wrap: wrap;
+    }
+
+    .category-selector-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      width: 100%;
+      margin-bottom: 4px;
+    }
+
+    .category-btn {
+      padding: 8px 16px;
+      background: var(--bg-card);
+      border: 2px solid var(--border-input);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .category-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .category-btn.selected {
+      border-width: 3px;
+      font-weight: 600;
+    }
+
+    .category-btn.ideas {
+      border-color: var(--cat-ideas-border);
+      background: var(--cat-ideas-bg);
+    }
+
+    .category-btn.tasks {
+      border-color: var(--cat-tasks-border);
+      background: var(--cat-tasks-bg);
+    }
+
+    .category-btn.reference {
+      border-color: var(--cat-reference-border);
+      background: var(--cat-reference-bg);
+    }
+
+    .category-btn.notes {
+      border-color: var(--cat-notes-border);
+      background: var(--cat-notes-bg);
+    }
+
+    .category-btn.quick {
+      border-color: var(--cat-quick-border);
+      background: var(--cat-quick-bg);
+    }
+
+    .note-category-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-size: 18px;
+      opacity: 0.7;
+    }
+
+    .notes-filter-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      padding: 12px;
+      background: var(--quad-gray-bg);
+      border-radius: 8px;
+    }
+
+    .filter-tab {
+      padding: 8px 16px;
+      background: var(--bg-card);
+      border: 2px solid var(--border-input);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+      color: var(--text-secondary);
+    }
+
+    .filter-tab:hover {
+      background: var(--primary-light);
+    }
+
+    .filter-tab.active {
+      border-color: var(--primary);
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-weight: 600;
+    }
+
+    .color-picker {
+      display: flex;
+      gap: 8px;
+      margin: 16px 0;
+      align-items: center;
+    }
+
+    .color-picker-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-right: 8px;
+    }
+
+    .color-option {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 3px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .color-option:hover {
+      transform: scale(1.1);
+    }
+
+    .color-option.selected {
+      border-color: var(--primary-dark);
+    }
+
+    .color-option.yellow {
+      background: var(--note-yellow-bg);
+      border: 1px solid var(--note-yellow-border);
+    }
+
+    .color-option.pink {
+      background: var(--note-pink-bg);
+      border: 1px solid var(--note-pink-border);
+    }
+
+    .color-option.blue {
+      background: var(--note-blue-bg);
+      border: 1px solid var(--note-blue-border);
+    }
+
+    .color-option.green {
+      background: var(--note-green-bg);
+      border: 1px solid var(--note-green-border);
+    }
+
+    .color-option.purple {
+      background: var(--note-purple-bg);
+      border: 1px solid var(--note-purple-border);
+    }
+
+    .note-edit-footer {
+      padding: 24px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .note-info {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 16px;
+      padding: 12px;
+      background: var(--quad-gray-bg);
+      border-radius: 8px;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 16px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--bg-card);
+      border-radius: 16px;
+      max-width: 600px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    }
+
+    .modal-header {
+      padding: 24px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 24px;
+      font-weight: bold;
+      color: var(--text-primary);
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 24px;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      line-height: 1;
+    }
+
+    .modal-close:hover {
+      color: var(--text-primary);
+    }
+
+    .modal-body {
+      padding: 24px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid var(--border-input);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-radius: 8px;
+      font-size: 16px;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .form-textarea {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid var(--border-input);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-radius: 8px;
+      font-size: 14px;
+      min-height: 100px;
+      resize: vertical;
+      font-family: inherit;
+    }
+
+    .form-textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .slider {
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--border-color);
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--primary);
+      cursor: pointer;
+    }
+
+    .slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--primary);
+      cursor: pointer;
+      border: none;
+    }
+
+    .slider-value {
+      font-weight: bold;
+      color: var(--primary);
+      min-width: 30px;
+      text-align: center;
+    }
+
+    .tag-input-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 8px;
+      border: 2px solid var(--border-input);
+      background: var(--bg-card);
+      border-radius: 8px;
+      min-height: 42px;
+      cursor: text;
+    }
+
+    .tag {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tag-remove {
+      background: none;
+      border: none;
+      color: var(--primary-dark);
+      cursor: pointer;
+      font-weight: bold;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .tag-input {
+      border: none;
+      outline: none;
+      flex: 1;
+      min-width: 100px;
+      padding: 4px;
+    }
+
+    .subtask-list {
+      margin-top: 8px;
+    }
+
+    .subtask-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      background: var(--quad-gray-bg);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    .subtask-checkbox {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .subtask-text {
+      flex: 1;
+      font-size: 14px;
+    }
+
+    .subtask-text.completed {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+
+    .subtask-delete {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+    }
+
+    .subtask-delete:hover {
+      color: var(--danger);
+    }
+
+    .modal-footer {
+      padding: 24px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-gray {
+      background: var(--text-muted);
+      color: white;
+    }
+
+    .btn-gray:hover {
+      background: var(--text-secondary);
+    }
+
+    .btn-red {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-red:hover {
+      background: #dc2626;
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #15803d;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      padding: 16px;
+      background: var(--quad-gray-bg);
+      border-radius: 8px;
+      margin-top: 16px;
+    }
+
+    .info-item {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .info-value {
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .empty-notes {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-notes-icon {
+      font-size: 64px;
+      margin-bottom: 16px;
+    }
+
+    .empty-notes-text {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .empty-notes-subtext {
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+  
+  <!-- Top Bar -->
+  <div class="zen-top-bar">
+    <div class="zen-top-content">
+      <div class="zen-logo">📊 TaskMatrix</div>
+      <input type="text" id="quick-add-input" class="quick-add-input" placeholder="⚡ Quick add task (press Enter)..."
+        onkeypress="handleQuickAdd(event)">
+      <div class="zen-actions">
+        <button class="zen-icon-btn" onclick="toggleTheme()" title="Toggle Dark Mode" id="theme-toggle">🌙</button>
+        <div style="position: relative;">
+          <div class="status-indicator" onclick="toggleStatusDropdown(event)" title="Online"></div>
+          <div class="status-dropdown" id="status-dropdown">
+            <div class="status-item">
+              <div class="status-dot"></div><strong>Online</strong>
+            </div>
+            <div class="status-item">✓ Synced with Local Storage</div>
+            <div class="status-item" style="color: #6b7280; font-size: 12px;">Last sync: Just now</div>
+          </div>
+        </div>
+        <button class="zen-icon-btn" onclick="toggleSearch()" title="Search & Filter">🔍</button>
+        <div class="menu-dropdown">
+          <button class="zen-icon-btn" onclick="toggleMenu(event)">⋮</button>
+          <div class="menu-dropdown-content" id="main-menu">
+            <button class="menu-item" onclick="document.getElementById('import-file').click(); closeMenu()">📥 Import
+              Data</button>
+            <button class="menu-item" onclick="exportData(); closeMenu()">📤 Export Data</button>
+            <button class="menu-item" onclick="toggleCompletedSection(); closeMenu()">📋 <span
+                id="menu-completed-text">Show Completed</span></button>
+            <button class="menu-item" onclick="showAbout(); closeMenu()">ℹ️ About</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Badges -->
+  <div class="floating-badges">
+    <div class="floating-badge stats" id="stats-badge" title="View Stats">
+      🏆
+    </div>
+    <div class="floating-badge notes" id="notes-badge" title="Quick Notes">
+      📝
+    </div>
+  </div>
+
+  <!-- Stats Popup -->
+  <div class="stats-popup" id="stats-popup">
+    <div class="stats-popup-header">
+      🏆 Your Progress
+      <button class="modal-close" onclick="closeStatsPopup()" style="font-size: 20px;">×</button>
+    </div>
+    <div style="margin-bottom: 12px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <span style="font-size: 14px; font-weight: 600;">Level <span id="popup-level">1</span></span>
+        <span style="font-size: 12px; color: #6b7280;"><span id="popup-xp">0</span>/100 XP</span>
+      </div>
+      <div class="xp-bar">
+        <div class="xp-fill" id="popup-xp-fill" style="width: 0%"></div>
+      </div>
+    </div>
+    <div style="margin-bottom: 12px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <span style="font-size: 14px; font-weight: 600;">Weekly Goal</span>
+        <span style="font-size: 12px; color: #6b7280;"><span id="popup-weekly">0/10</span></span>
+      </div>
+      <div class="weekly-bar">
+        <div class="weekly-fill" id="popup-weekly-fill" style="width: 0%"></div>
+      </div>
+    </div>
+    <div class="stats-grid-popup">
+      <div class="stat-box-popup red">
+        <div class="stat-number-popup" id="popup-stat-first">0</div>
+        <div class="stat-label-popup">Do First</div>
+      </div>
+      <div class="stat-box-popup blue">
+        <div class="stat-number-popup" id="popup-stat-schedule">0</div>
+        <div class="stat-label-popup">Schedule</div>
+      </div>
+      <div class="stat-box-popup yellow">
+        <div class="stat-number-popup" id="popup-stat-delegate">0</div>
+        <div class="stat-label-popup">Delegate</div>
+      </div>
+      <div class="stat-box-popup gray">
+        <div class="stat-number-popup" id="popup-stat-eliminate">0</div>
+        <div class="stat-label-popup">Eliminate</div>
+      </div>
+    </div>
+    <div style="text-align: center; font-size: 12px; color: #6b7280; margin-top: 8px;">
+      <span id="popup-completed">0</span> tasks completed
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Collapsible Search -->
+    <div class="search-container collapsed" id="search-container">
+      <div class="search-content">
+        <div class="search-filter-bar">
+          <input type="text" id="search-input" class="search-input" placeholder="🔎 Search tasks..."
+            oninput="applyFilters()">
+          <select id="filter-category" class="filter-select" onchange="applyFilters()">
+            <option value="all">All Categories</option>
+            <option value="work">Work</option>
+            <option value="personal">Personal</option>
+            <option value="health">Health</option>
+            <option value="learning">Learning</option>
+          </select>
+          <select id="filter-status" class="filter-select" onchange="applyFilters()">
+            <option value="all">All Status</option>
+            <option value="todo">To Do</option>
+            <option value="in-progress">In Progress</option>
+          </select>
+          <select id="filter-date" class="filter-select" onchange="applyFilters()">
+            <option value="all">All Dates</option>
+            <option value="overdue">Overdue</option>
+            <option value="today">Due Today</option>
+            <option value="week">Due This Week</option>
+          </select>
+          <button class="clear-btn" onclick="clearFilters()">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Completed Section -->
+    <div class="completed-section" id="completed-section">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h2 style="font-size:20px; font-weight:bold; color:var(--text-secondary);">✓ Completed Tasks</h2>
+        <button onclick="clearCompleted()" class="btn btn-red">Clear All</button>
+      </div>
+      <div id="completed-tasks-list" style="max-height:300px; overflow-y:auto;"></div>
+    </div>
+
+    <!-- Matrix -->
+    <div class="card">
+      <div class="matrix">
+        <div class="quadrant red" ondragover="allowDrop(event)" ondrop="drop(event, 'do-first')">
+          <div class="quad-header red">
+            <span>Do First 🔥</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="count-first" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
+              <div class="sort-dropdown">
+                <button class="sort-dropdown-btn" onclick="toggleSortDropdown('do-first', event)">⋮</button>
+                <div class="sort-dropdown-menu" id="sort-menu-do-first">
+                  <button class="sort-dropdown-item active" onclick="setSortMode('do-first', 'manual', event)"><span
+                      class="checkmark">✓</span><span>✋ Manual</span></button>
+                  <button class="sort-dropdown-item" onclick="setSortMode('do-first', 'date', event)"><span
+                      class="checkmark">✓</span><span>📅 Date</span></button>
+                  <button class="sort-dropdown-item" onclick="setSortMode('do-first', 'alpha', event)"><span
+                      class="checkmark">✓</span><span>🔤 A-Z</span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="quad-body" id="tasks-do-first"></div>
+        </div>
+
+        <div class="quadrant blue" ondragover="allowDrop(event)" ondrop="drop(event, 'schedule')">
+          <div class="quad-header blue">
+            <span>Schedule 📅</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="count-schedule" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
+              <div class="sort-dropdown">
+                <button class="sort-dropdown-btn" onclick="toggleSortDropdown('schedule', event)">⋮</button>
+                <div class="sort-dropdown-menu" id="sort-menu-schedule">
+                  <button class="sort-dropdown-item active" onclick="setSortMode('schedule', 'manual', event)"><span
+                      class="checkmark">✓</span><span>✋ Manual</span></button>
+                  <button class="sort-dropdown-item" onclick="setSortMode('schedule', 'date', event)"><span
+                      class="checkmark">✓</span><span>📅 Date</span></button>
+                  <button class="sort-dropdown-item" onclick="setSortMode('schedule', 'alpha', event)"><span
+                      class="checkmark">✓</span><span>🔤 A-Z</span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="quad-body" id="tasks-schedule"></div>
+        </div>
+
+        <div class="quadrant yellow" ondragover="allowDrop(event)" ondrop="drop(event, 'delegate')">
+          <div class="quad-header yellow">
+            <span>Delegate 🤝</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="count-delegate" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
+              <div class="sort-dropdown">
+                <button class="sort-dropdown-btn" onclick="toggleSortDropdown('delegate', event)">⋮</button>
+                <div class="sort-dropdown-menu" id="sort-menu-delegate">
+                  <button class="sort-dropdown-item active" onclick="setSortMode('delegate', 'manual', event)"><span
+                      class="checkmark">✓</span><span>✋ Manual</span></button>
+                  <button class="sort-dropdown-item" onclick="setSortMode('delegate', 'date', event)"><span
+                      class="checkmark">✓</span><span>📅 Date</span></button>
+                  <button class="sort-dropdown-item" onclick="setSortMode('delegate', 'alpha', event)"><span
+                      class="checkmark">✓</span><span>🔤 A-Z</span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="quad-body" id="tasks-delegate"></div>
+        </div>
+
+        <div class="quadrant gray" ondragover="allowDrop(event)" ondrop="drop(event, 'eliminate')">
+          <div class="quad-header gray">
+            <span>Eliminate 🗑️</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="count-eliminate" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
+              <div class="sort-dropdown">
+                <button class="sort-dropdown-btn" onclick="toggleSortDropdown('eliminate', event)">⋮</button>
+                <div class="sort-dropdown-menu" id="sort-menu-eliminate">
+                  <button class="sort-dropdown-item active"
+                    onclick="setSortMode('eliminate', 'manual', event)"><span class="checkmark">✓</span><span>✋
+                      Manual</span></button>
+                  <button class="sort-dropdown-item" onclick="setSortMode('eliminate', 'date', event)"><span
+                      class="checkmark">✓</span><span>📅 Date</span></button>
+                  <button class="sort-dropdown-item" onclick="setSortMode('eliminate', 'alpha', event)"><span
+                      class="checkmark">✓</span><span>🔤 A-Z</span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="quad-body" id="tasks-eliminate"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pinned Notes Section -->
+    <div class="pinned-notes-section" id="pinned-notes-section">
+      <div class="pinned-notes-header">
+        <span>📌 Pinned Notes</span>
+      </div>
+      <div class="pinned-notes-grid" id="pinned-notes-grid"></div>
+    </div>
+  </div>
+
+  <!-- Notes Modal -->
+  <div class="notes-modal" id="notes-modal" onclick="closeNotesModalOnOverlay(event)">
+    <div class="notes-container" onclick="event.stopPropagation()">
+      <div class="notes-header">
+        <h2 class="notes-title">📝 Quick Notes</h2>
+        <div class="notes-header-actions">
+          <button class="btn btn-primary" onclick="createNewNote()">+ New Note</button>
+          <button class="modal-close" onclick="closeNotesModal()">×</button>
+        </div>
+      </div>
+      <div class="notes-body">
+        <div class="notes-filter-tabs">
+          <button class="filter-tab active" data-category="all" onclick="filterNotesByCategory('all')">📋 All</button>
+          <button class="filter-tab" data-category="ideas" onclick="filterNotesByCategory('ideas')">💡 Ideas</button>
+          <button class="filter-tab" data-category="tasks" onclick="filterNotesByCategory('tasks')">✅ Tasks</button>
+          <button class="filter-tab" data-category="reference" onclick="filterNotesByCategory('reference')">📚 Reference</button>
+          <button class="filter-tab" data-category="notes" onclick="filterNotesByCategory('notes')">📝 Notes</button>
+          <button class="filter-tab" data-category="quick" onclick="filterNotesByCategory('quick')">⚡ Quick</button>
+        </div>
+        <div class="notes-grid" id="notes-grid"></div>
+        <input type="text" id="notes-search" class="notes-search" placeholder="🔍 Search notes..."
+          oninput="filterNotes()">
+      </div>
+    </div>
+  </div>
+
+  <!-- Note Edit Modal -->
+  <div class="note-edit-modal" id="note-edit-modal" onclick="closeNoteEditModalOnOverlay(event)">
+    <div class="note-edit-container" onclick="event.stopPropagation()">
+      <div class="note-edit-header">
+        <h2 style="font-size: 20px; font-weight: bold;">Edit Note</h2>
+        <button class="modal-close" onclick="closeNoteEditModal()">×</button>
+      </div>
+      <div class="note-edit-body">
+        <input type="text" id="note-title-input" class="note-title-input"
+          placeholder="📌 Note title...">
+        
+        <div class="category-selector">
+          <div class="category-selector-label">Category:</div>
+          <button class="category-btn ideas" data-category="ideas" id="cat-ideas">
+            <span>💡</span><span>Ideas</span>
+          </button>
+          <button class="category-btn tasks" data-category="tasks" id="cat-tasks">
+            <span>✅</span><span>Tasks</span>
+          </button>
+          <button class="category-btn reference" data-category="reference" id="cat-reference">
+            <span>📚</span><span>Reference</span>
+          </button>
+          <button class="category-btn notes selected" data-category="notes" id="cat-notes">
+            <span>📝</span><span>Notes</span>
+          </button>
+          <button class="category-btn quick" data-category="quick" id="cat-quick">
+            <span>⚡</span><span>Quick</span>
+          </button>
+        </div>
+
+        <div class="view-toggle">
+          <button class="view-toggle-btn active" id="edit-view-btn">✏️ Edit</button>
+          <button class="view-toggle-btn" id="preview-view-btn">👁️ Preview</button>
+        </div>
+
+        <div id="note-edit-area">
+          <div class="note-toolbar">
+            <button class="toolbar-btn" id="bullet-btn" title="Bullet list">• Bullet</button>
+            <button class="toolbar-btn" id="checkbox-btn" title="Checklist">☐ Checkbox</button>
+            <button class="toolbar-btn" id="numbered-btn" title="Numbered list">1. Numbered</button>
+            <button class="toolbar-btn" id="heading-btn" title="Heading"># Heading</button>
+            <button class="toolbar-btn" id="bold-btn" title="Bold"><strong>B</strong></button>
+            <button class="toolbar-btn" id="italic-btn" title="Italic"><em>I</em></button>
+          </div>
+          <textarea id="note-content-input" class="note-content-input"
+            placeholder="Write your note here...
+
+Tips:
+• Type '- ' for bullets
+• Type '[ ] ' for checkboxes
+• Type '1. ' for numbered lists
+• Type '# ' for headings" onkeydown="handleNoteKeydown(event)"></textarea>
+        </div>
+
+        <div id="note-preview-area" style="display: none;">
+          <div class="note-preview" id="note-preview-content"></div>
+        </div>
+
+        <div class="color-picker">
+          <span class="color-picker-label">Color:</span>
+          <div class="color-option yellow" onclick="selectNoteColor('yellow')"></div>
+          <div class="color-option pink" onclick="selectNoteColor('pink')"></div>
+          <div class="color-option blue" onclick="selectNoteColor('blue')"></div>
+          <div class="color-option green" onclick="selectNoteColor('green')"></div>
+          <div class="color-option purple" onclick="selectNoteColor('purple')"></div>
+        </div>
+        <div class="note-info">
+          <div>Created: <span id="note-created-date">-</span></div>
+          <div>Last edited: <span id="note-edited-date">-</span></div>
+        </div>
+        <div style="margin-top: 16px; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="note-pinned-input" style="width: 16px; height: 16px; cursor: pointer;">
+          <label for="note-pinned-input" style="cursor: pointer; font-size: 14px; color: var(--text-secondary);">Pin
+            this note to dashboard</label>
+        </div>
+      </div>
+      <div class="note-edit-footer">
+        <button class="btn btn-red" id="delete-note-btn">🗑️ Delete</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-success" id="convert-note-btn">➕ Convert to Task</button>
+          <button class="btn btn-primary" id="save-note-btn">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Modal -->
+  <div class="modal-overlay" id="task-modal" onclick="closeModalOnOverlay(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-main-title">Add Task</h2>
+        <button class="modal-close" onclick="closeTaskModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Title</label>
+          <input type="text" id="modal-title" class="form-input" placeholder="Task title">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Notes</label>
+          <textarea id="modal-notes" class="form-textarea" placeholder="Add detailed notes..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select id="modal-category" class="form-input">
+            <option value="work">Work</option>
+            <option value="personal">Personal</option>
+            <option value="health">Health</option>
+            <option value="learning">Learning</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Due Date & Time</label>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <input type="date" id="modal-date" class="form-input">
+            <input type="time" id="modal-time" class="form-input">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Importance</label>
+          <div class="slider-container">
+            <input type="range" id="modal-importance" class="slider" min="1" max="5" value="3"
+              oninput="updateSliderValue('importance')">
+            <span class="slider-value" id="importance-value">3</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Urgency</label>
+          <div class="slider-container">
+            <input type="range" id="modal-urgency" class="slider" min="1" max="5" value="3"
+              oninput="updateSliderValue('urgency')">
+            <span class="slider-value" id="urgency-value">3</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tags</label>
+          <div class="tag-input-container" id="tag-container" onclick="focusTagInput()">
+            <input type="text" id="tag-input" class="tag-input" placeholder="Add tags..."
+              onkeypress="handleTagInput(event)">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Subtasks</label>
+          <div class="subtask-list" id="subtask-list"></div>
+          <input type="text" id="subtask-input" class="form-input" placeholder="Add subtask (press Enter)"
+            onkeypress="handleSubtaskInput(event)" style="margin-top:8px;">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Estimated Duration (minutes)</label>
+          <input type="number" id="modal-duration" class="form-input" placeholder="e.g., 30" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Recurring Task</label>
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+            <input type="checkbox" id="modal-recurring" style="width: 20px; height: 20px; cursor: pointer;"
+              onchange="toggleRecurringOptions()">
+            <label for="modal-recurring" style="margin: 0; cursor: pointer; font-weight: normal;">Make this a
+              recurring
+              task</label>
+          </div>
+          <div id="recurring-options"
+            style="display: none; padding: 16px; background: var(--quad-gray-bg); border-radius: 8px; margin-top: 8px;">
+            <div style="margin-bottom: 12px;">
+              <label style="display: block; font-size: 14px; margin-bottom: 8px; font-weight: 600;">Repeat
+                Every</label>
+              <select id="modal-recur-frequency" class="form-input" onchange="updateRecurringUI()">
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+            <div id="custom-days-input" style="display: none; margin-bottom: 12px;">
+              <label style="display: block; font-size: 14px; margin-bottom: 8px;">Every <input type="number"
+                  id="modal-recur-interval" min="1" value="1"
+                  style="width: 60px; padding: 4px 8px; border: 2px solid var(--border-input); border-radius: 4px; text-align: center; background: var(--bg-card); color: var(--text-primary);">
+                day(s)</label>
+            </div>
+            <div id="weekdays-input" style="display: none;">
+              <label style="display: block; font-size: 14px; margin-bottom: 8px; font-weight: 600;">Repeat
+                On</label>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <label
+                  style="display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--bg-card); border: 2px solid var(--border-input); border-radius: 6px; cursor: pointer; font-weight: normal;">
+                  <input type="checkbox" value="1" class="weekday-check"> Mon
+                </label>
+                <label
+                  style="display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--bg-card); border: 2px solid var(--border-input); border-radius: 6px; cursor: pointer; font-weight: normal;">
+                  <input type="checkbox" value="2" class="weekday-check"> Tue
+                </label>
+                <label
+                  style="display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--bg-card); border: 2px solid var(--border-input); border-radius: 6px; cursor: pointer; font-weight: normal;">
+                  <input type="checkbox" value="3" class="weekday-check"> Wed
+                </label>
+                <label
+                  style="display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--bg-card); border: 2px solid var(--border-input); border-radius: 6px; cursor: pointer; font-weight: normal;">
+                  <input type="checkbox" value="4" class="weekday-check"> Thu
+                </label>
+                <label
+                  style="display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--bg-card); border: 2px solid var(--border-input); border-radius: 6px; cursor: pointer; font-weight: normal;">
+                  <input type="checkbox" value="5" class="weekday-check"> Fri
+                </label>
+                <label
+                  style="display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--bg-card); border: 2px solid var(--border-input); border-radius: 6px; cursor: pointer; font-weight: normal;">
+                  <input type="checkbox" value="6" class="weekday-check"> Sat
+                </label>
+                <label
+                  style="display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--bg-card); border: 2px solid var(--border-input); border-radius: 6px; cursor: pointer; font-weight: normal;">
+                  <input type="checkbox" value="0" class="weekday-check"> Sun
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="info-grid" id="task-info-grid" style="display: none;">
+          <div class="info-item">
+            <div>Created</div>
+            <div class="info-value" id="modal-created">-</div>
+          </div>
+          <div class="info-item">
+            <div>Last Modified</div>
+            <div class="info-value" id="modal-modified">-</div>
+          </div>
+          <div class="info-item">
+            <div>Status</div>
+            <div class="info-value" id="modal-status">-</div>
+          </div>
+          <div class="info-item">
+            <div>Quadrant</div>
+            <div class="info-value" id="modal-quadrant">-</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-red" id="delete-task-btn" onclick="deleteTaskFromModal()"
+          style="display: none;">Delete
+          Task</button>
+        <div style="display:flex; gap:8px; margin-left: auto;">
+          <button class="btn btn-gray" onclick="closeTaskModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveTaskDetails()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let tasks = [];
+    let notes = [];
+    let userStats = { xp: 0, level: 1, totalCompleted: 0, weeklyGoal: 10, weeklyCompleted: 0 };
+    let draggedTask = null;
+    let showCompleted = false;
+    let currentEditingTask = null;
+    let currentEditingNote = null;
+    let currentNoteColor = 'yellow';
+    let currentNoteCategory = 'notes';
+    let noteCategoryFilter = 'all';
+    let noteViewMode = 'edit'; // 'edit' or 'preview'
+    let sortModes = { 'do-first': 'manual', 'schedule': 'manual', 'delegate': 'manual', 'eliminate': 'manual' };
+    let filters = { search: '', category: 'all', status: 'all', date: 'all' };
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.getAttribute('data-theme') === 'dark';
+      const newTheme = isDark ? 'light' : 'dark';
+      html.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+      updateThemeIcon(newTheme);
+    }
+
+    function updateThemeIcon(theme) {
+      const btn = document.getElementById('theme-toggle');
+      if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+
+    function init() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      updateThemeIcon(savedTheme);
+
+      const saved = localStorage.getItem('tasks');
+      const savedStats = localStorage.getItem('userStats');
+      const savedNotes = localStorage.getItem('notes');
+
+      if (saved) tasks = JSON.parse(saved);
+      if (savedStats) userStats = JSON.parse(savedStats);
+      if (savedNotes) {
+        notes = JSON.parse(savedNotes);
+        // Ensure all notes have a category
+        notes = notes.map(n => {
+          if (!n.category) n.category = 'notes';
+          return n;
+        });
+      }
+
+      tasks = tasks.map(t => {
+        if (t.pinned === undefined) t.pinned = false;
+        if (t.recurring === undefined) t.recurring = false;
+        if (t.recurFrequency === undefined) t.recurFrequency = '';
+        if (t.recurInterval === undefined) t.recurInterval = 1;
+        if (t.recurDays === undefined) t.recurDays = [];
+        return t;
+      });
+
+      render();
+      renderNotes();
+      renderPinnedNotes();
+      updateStatsDisplay();
+    }
+
+    function saveTasks() { localStorage.setItem('tasks', JSON.stringify(tasks)); }
+    function saveStats() { localStorage.setItem('userStats', JSON.stringify(userStats)); }
+    function saveNotes() { localStorage.setItem('notes', JSON.stringify(notes)); }
+
+    function getQuad(imp, urg) {
+      if (urg >= 4 && imp >= 4) return 'do-first';
+      if (urg < 4 && imp >= 4) return 'schedule';
+      if (urg >= 4 && imp < 4) return 'delegate';
+      return 'eliminate';
+    }
+
+    function handleQuickAdd(event) {
+      if (event.key === 'Enter') {
+        const input = document.getElementById('quick-add-input');
+        const text = input.value.trim();
+        if (!text) return;
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tasks.push({
+          id: Date.now(),
+          title: text,
+          category: 'personal',
+          status: 'todo',
+          dueDate: tomorrow.toISOString().split('T')[0],
+          importance: 3,
+          urgency: 3,
+          notes: '',
+          tags: [],
+          subtasks: [],
+          pinned: false,
+          createdAt: new Date().toISOString(),
+          recurring: false,
+          recurFrequency: '',
+          recurInterval: 1,
+          recurDays: []
+        });
+        input.value = '';
+        saveTasks();
+        render();
+        updateStatsDisplay();
+      }
+    }
+
+    function toggleStatusDropdown(event) {
+      event.stopPropagation();
+      const dropdown = document.getElementById('status-dropdown');
+      dropdown.classList.toggle('show');
+    }
+
+    function toggleMenu(event) {
+      event.stopPropagation();
+      const menu = document.getElementById('main-menu');
+      menu.classList.toggle('show');
+    }
+
+    function closeMenu() {
+      document.getElementById('main-menu').classList.remove('show');
+    }
+
+    function toggleSearch() {
+      const container = document.getElementById('search-container');
+      container.classList.toggle('collapsed');
+      container.classList.toggle('expanded');
+    }
+
+    function showAbout() {
+      alert('TaskMatrix v2.1\n\nAn Eisenhower Matrix task management app.\n\nFeatures:\n• 4-quadrant prioritization\n• Drag & drop tasks\n• Recurring tasks\n• Quick notes with sticky cards\n• Tags & subtasks\n• Progress tracking\n• Export/Import data');
+    }
+
+    function toggleStatsPopup() {
+      const popup = document.getElementById('stats-popup');
+      if (popup.classList.contains('show')) {
+        closeStatsPopup();
+      } else {
+        popup.classList.add('show');
+        updateStatsDisplay();
+      }
+    }
+
+    function closeStatsPopup() {
+      document.getElementById('stats-popup').classList.remove('show');
+    }
+
+    function openNotesModal() {
+      document.getElementById('notes-modal').classList.add('active');
+      document.body.style.overflow = 'hidden';
+      noteCategoryFilter = 'all';
+      updateFilterTabs();
+      renderNotes();
+    }
+
+    function closeNotesModal() {
+      document.getElementById('notes-modal').classList.remove('active');
+      document.body.style.overflow = 'auto';
+      document.getElementById('notes-search').value = '';
+    }
+
+    function closeNotesModalOnOverlay(event) {
+      if (event.target.id === 'notes-modal') closeNotesModal();
+    }
+
+    function renderNotes(searchTerm = '') {
+      const grid = document.getElementById('notes-grid');
+      let filteredNotes = notes;
+
+      // Filter by category
+      if (noteCategoryFilter !== 'all') {
+        filteredNotes = filteredNotes.filter(n => n.category === noteCategoryFilter);
+      }
+
+      // Filter by search term
+      if (searchTerm) {
+        filteredNotes = filteredNotes.filter(n =>
+          n.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          n.content.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      }
+
+      if (filteredNotes.length === 0 && searchTerm === '' && noteCategoryFilter === 'all') {
+        grid.innerHTML = `
+          <div class="empty-notes">
+            <div class="empty-notes-icon">📝</div>
+            <div class="empty-notes-text">No notes yet</div>
+            <div class="empty-notes-subtext">Click "+ New Note" to create your first note</div>
+          </div>
+        `;
+        return;
+      }
+
+      if (filteredNotes.length === 0) {
+        grid.innerHTML = `
+          <div class="empty-notes">
+            <div class="empty-notes-icon">🔍</div>
+            <div class="empty-notes-text">No notes found</div>
+            <div class="empty-notes-subtext">Try a different filter or search term</div>
+          </div>
+        `;
+        return;
+      }
+
+      const categoryEmojis = {
+        'ideas': '💡',
+        'tasks': '✅',
+        'reference': '📚',
+        'notes': '📝',
+        'quick': '⚡'
+      };
+
+      grid.innerHTML = filteredNotes.map(note => {
+        const rendered = renderNoteContent(note.content);
+        const preview = rendered.length > 100 ? rendered.substring(0, 100) + '...' : rendered;
+        const timeAgo = getTimeAgo(note.modifiedAt);
+        const categoryEmoji = categoryEmojis[note.category || 'notes'];
+        return `
+          <div class="note-card ${note.color}" style="position: relative;">
+            <button class="note-delete-btn" onclick="event.stopPropagation(); deleteNoteFromCard(${note.id})" title="Delete note">×</button>
+            <div class="note-category-badge">${categoryEmoji}</div>
+            <div onclick="editNote(${note.id})">
+              <div class="note-card-header">${note.title || 'Untitled'}</div>
+              <div class="note-card-content">${preview || 'Empty note'}</div>
+              <div class="note-card-footer">${timeAgo}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function deleteNoteFromCard(noteId) {
+      if (confirm('Delete this note?')) {
+        notes = notes.filter(n => n.id !== noteId);
+        saveNotes();
+        renderNotes();
+        renderPinnedNotes();
+      }
+    }
+
+    function filterNotesByCategory(category) {
+      noteCategoryFilter = category;
+      updateFilterTabs();
+      renderNotes();
+    }
+
+    function updateFilterTabs() {
+      document.querySelectorAll('.filter-tab').forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.dataset.category === noteCategoryFilter) {
+          tab.classList.add('active');
+        }
+      });
+    }
+
+    function renderNoteContent(content) {
+      if (!content) return '';
+      // Simple text representation for preview
+      return content
+        .replace(/\[\s\]/g, '☐')
+        .replace(/\[x\]/gi, '☑')
+        .replace(/^- /gm, '• ')
+        .replace(/^#+\s+(.+)$/gm, '$1')
+        .replace(/\*\*(.+?)\*\*/g, '$1')
+        .replace(/\*(.+?)\*/g, '$1');
+    }
+
+    function parseNoteToHTML(content) {
+      if (!content) return '<p style="color: var(--text-muted);">Empty note</p>';
+      
+      const lines = content.split('\n');
+      let html = '';
+      let inList = false;
+      let listType = '';
+      
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        
+        // Headings
+        if (trimmed.startsWith('# ')) {
+          if (inList) { html += `</${listType}>`;  inList = false; }
+          html += `<h3 style="font-size: 18px; font-weight: bold; margin: 12px 0 8px 0;">${trimmed.substring(2)}</h3>`;
+        }
+        else if (trimmed.startsWith('## ')) {
+          if (inList) { html += `</${listType}>`;  inList = false; }
+          html += `<h4 style="font-size: 16px; font-weight: bold; margin: 10px 0 6px 0;">${trimmed.substring(3)}</h4>`;
+        }
+        // Checkboxes - unchecked
+        else if (trimmed.match(/^\[\s\]/)) {
+          if (!inList || listType !== 'ul-check') {
+            if (inList) html += `</${listType}>`;
+            html += '<ul style="list-style: none; padding-left: 0;">';
+            inList = true;
+            listType = 'ul-check';
+          }
+          const text = trimmed.substring(3).trim();
+          html += `<li style="margin-bottom: 6px;"><input type="checkbox" style="margin-right: 8px; width: 16px; height: 16px; cursor: pointer;" disabled> <span>${text}</span></li>`;
+        }
+        // Checkboxes - checked
+        else if (trimmed.match(/^\[x\]/i)) {
+          if (!inList || listType !== 'ul-check') {
+            if (inList) html += `</${listType}>`;
+            html += '<ul style="list-style: none; padding-left: 0;">';
+            inList = true;
+            listType = 'ul-check';
+          }
+          const text = trimmed.substring(3).trim();
+          html += `<li style="margin-bottom: 6px;"><input type="checkbox" checked style="margin-right: 8px; width: 16px; height: 16px; cursor: pointer;" disabled> <span class="checked-item">${text}</span></li>`;
+        }
+        // Bullets
+        else if (trimmed.startsWith('- ')) {
+          if (!inList || listType !== 'ul') {
+            if (inList) html += `</${listType}>`;
+            html += '<ul style="margin-left: 20px;">';
+            inList = true;
+            listType = 'ul';
+          }
+          html += `<li>${trimmed.substring(2)}</li>`;
+        }
+        // Numbered
+        else if (trimmed.match(/^\d+\.\s/)) {
+          if (!inList || listType !== 'ol') {
+            if (inList) html += `</${listType}>`;
+            html += '<ol style="margin-left: 20px;">';
+            inList = true;
+            listType = 'ol';
+          }
+          html += `<li>${trimmed.replace(/^\d+\.\s/, '')}</li>`;
+        }
+        // Bold
+        else if (trimmed.includes('**')) {
+          if (inList) { html += `</${listType}>`;  inList = false; }
+          const formatted = trimmed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+          html += `<p>${formatted}</p>`;
+        }
+        // Italic
+        else if (trimmed.includes('*')) {
+          if (inList) { html += `</${listType}>`;  inList = false; }
+          const formatted = trimmed.replace(/\*(.*?)\*/g, '<em>$1</em>');
+          html += `<p>${formatted}</p>`;
+        }
+        // Regular text
+        else if (trimmed) {
+          if (inList) { html += `</${listType}>`;  inList = false; }
+          html += `<p>${trimmed}</p>`;
+        }
+        // Empty line
+        else {
+          if (inList) { html += `</${listType}>`;  inList = false; }
+          html += '<br>';
+        }
+      });
+      
+      if (inList) html += `</${listType}>`;
+      
+      return html || '<p style="color: var(--text-muted);">Empty note</p>';
+    }
+
+    function renderPinnedNotes() {
+      const container = document.getElementById('pinned-notes-section');
+      const grid = document.getElementById('pinned-notes-grid');
+      const pinnedNotes = notes.filter(n => n.pinned);
+
+      if (pinnedNotes.length === 0) {
+        container.classList.remove('has-notes');
+        return;
+      }
+
+      const categoryEmojis = {
+        'ideas': '💡',
+        'tasks': '✅',
+        'reference': '📚',
+        'notes': '📝',
+        'quick': '⚡'
+      };
+
+      container.classList.add('has-notes');
+      grid.innerHTML = pinnedNotes.map(note => {
+        const preview = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
+        const categoryEmoji = categoryEmojis[note.category || 'notes'];
+        return `
+          <div class="note-card ${note.color}" style="position: relative;">
+            <button class="note-delete-btn" onclick="event.stopPropagation(); deleteNoteFromCard(${note.id})" title="Delete note">×</button>
+            <div onclick="editNote(${note.id})">
+              <div class="note-card-header">
+                <span>${note.title || 'Untitled'}</span>
+                <span style="font-size: 12px;">📌 ${categoryEmoji}</span>
+              </div>
+              <div class="note-card-content">${preview || 'Empty note'}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function filterNotes() {
+      const searchTerm = document.getElementById('notes-search').value;
+      renderNotes(searchTerm);
+    }
+
+    function createNewNote() {
+      currentEditingNote = null;
+      currentNoteColor = 'yellow';
+      currentNoteCategory = 'notes';
+      noteViewMode = 'edit';
+      document.getElementById('note-title-input').value = '';
+      document.getElementById('note-content-input').value = '';
+      document.getElementById('note-pinned-input').checked = false;
+      document.getElementById('note-created-date').textContent = new Date().toLocaleString();
+      document.getElementById('note-edited-date').textContent = '-';
+
+      document.querySelectorAll('.color-option').forEach(el => el.classList.remove('selected'));
+      document.querySelector('.color-option.yellow').classList.add('selected');
+
+      // Hide delete button for new notes
+      const deleteBtn = document.getElementById('delete-note-btn');
+      if (deleteBtn) deleteBtn.style.display = 'none';
+
+      updateCategorySelection();
+      switchNoteView('edit');
+      document.getElementById('note-edit-modal').classList.add('active');
+      setTimeout(setupNoteToolbar, 50);
+    }
+
+    function editNote(noteId) {
+      const note = notes.find(n => n.id === noteId);
+      if (!note) return;
+
+      currentEditingNote = note;
+      currentNoteColor = note.color;
+      currentNoteCategory = note.category || 'notes';
+      noteViewMode = 'edit';
+      document.getElementById('note-title-input').value = note.title;
+      document.getElementById('note-content-input').value = note.content;
+      document.getElementById('note-pinned-input').checked = note.pinned || false;
+      document.getElementById('note-created-date').textContent = new Date(note.createdAt).toLocaleString();
+      document.getElementById('note-edited-date').textContent = new Date(note.modifiedAt).toLocaleString();
+      
+      // Show delete button for existing notes
+      const deleteBtn = document.getElementById('delete-note-btn');
+      if (deleteBtn) deleteBtn.style.display = 'block';
+
+      updateColorSelection();
+      updateCategorySelection();
+      switchNoteView('edit');
+      document.getElementById('note-edit-modal').classList.add('active');
+      setTimeout(setupNoteToolbar, 50);
+    }
+
+    function selectNoteCategory(category) {
+      currentNoteCategory = category;
+      updateCategorySelection();
+    }
+
+    function updateCategorySelection() {
+      document.querySelectorAll('.category-btn').forEach(btn => {
+        btn.classList.remove('selected');
+        if (btn.dataset.category === currentNoteCategory) {
+          btn.classList.add('selected');
+        }
+      });
+    }
+
+    function setupNoteToolbar() {
+      const editViewBtn = document.getElementById('edit-view-btn');
+      const previewViewBtn = document.getElementById('preview-view-btn');
+      const bulletBtn = document.getElementById('bullet-btn');
+      const checkboxBtn = document.getElementById('checkbox-btn');
+      const numberedBtn = document.getElementById('numbered-btn');
+      const headingBtn = document.getElementById('heading-btn');
+      const boldBtn = document.getElementById('bold-btn');
+      const italicBtn = document.getElementById('italic-btn');
+      const deleteBtn = document.getElementById('delete-note-btn');
+      const convertBtn = document.getElementById('convert-note-btn');
+      const saveBtn = document.getElementById('save-note-btn');
+
+      // Category buttons
+      const catIdeas = document.getElementById('cat-ideas');
+      const catTasks = document.getElementById('cat-tasks');
+      const catReference = document.getElementById('cat-reference');
+      const catNotes = document.getElementById('cat-notes');
+      const catQuick = document.getElementById('cat-quick');
+
+      if (editViewBtn) editViewBtn.onclick = () => switchNoteView('edit');
+      if (previewViewBtn) previewViewBtn.onclick = () => switchNoteView('preview');
+      if (bulletBtn) bulletBtn.onclick = insertBullet;
+      if (checkboxBtn) checkboxBtn.onclick = insertCheckbox;
+      if (numberedBtn) numberedBtn.onclick = insertNumbered;
+      if (headingBtn) headingBtn.onclick = insertHeading;
+      if (boldBtn) boldBtn.onclick = insertBold;
+      if (italicBtn) italicBtn.onclick = insertItalic;
+      if (deleteBtn) deleteBtn.onclick = deleteCurrentNote;
+      if (convertBtn) convertBtn.onclick = convertNoteToTask;
+      if (saveBtn) saveBtn.onclick = saveCurrentNote;
+
+      if (catIdeas) catIdeas.onclick = () => selectNoteCategory('ideas');
+      if (catTasks) catTasks.onclick = () => selectNoteCategory('tasks');
+      if (catReference) catReference.onclick = () => selectNoteCategory('reference');
+      if (catNotes) catNotes.onclick = () => selectNoteCategory('notes');
+      if (catQuick) catQuick.onclick = () => selectNoteCategory('quick');
+    }
+
+    function switchNoteView(mode) {
+      noteViewMode = mode;
+      const editArea = document.getElementById('note-edit-area');
+      const previewArea = document.getElementById('note-preview-area');
+      const editBtn = document.getElementById('edit-view-btn');
+      const previewBtn = document.getElementById('preview-view-btn');
+
+      if (mode === 'edit') {
+        editArea.style.display = 'block';
+        previewArea.style.display = 'none';
+        editBtn.classList.add('active');
+        previewBtn.classList.remove('active');
+      } else {
+        editArea.style.display = 'none';
+        previewArea.style.display = 'block';
+        editBtn.classList.remove('active');
+        previewBtn.classList.add('active');
+        
+        // Update preview
+        const content = document.getElementById('note-content-input').value;
+        document.getElementById('note-preview-content').innerHTML = parseNoteToHTML(content);
+      }
+    }
+
+    function insertBullet() {
+      insertTextAtCursor('- ');
+    }
+
+    function insertCheckbox() {
+      insertTextAtCursor('[ ] ');
+    }
+
+    function insertNumbered() {
+      const textarea = document.getElementById('note-content-input');
+      const start = textarea.selectionStart;
+      const currentValue = textarea.value;
+      
+      // Find the start of the current line
+      const beforeCursor = currentValue.substring(0, start);
+      const lineStart = beforeCursor.lastIndexOf('\n') + 1;
+      const currentLine = beforeCursor.substring(lineStart);
+      
+      // Check if previous line has a number
+      const lines = beforeCursor.split('\n');
+      let nextNumber = 1;
+      
+      // Look for the last numbered item
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const match = lines[i].match(/^(\d+)\.\s/);
+        if (match) {
+          nextNumber = parseInt(match[1]) + 1;
+          break;
+        }
+      }
+      
+      insertTextAtCursor(`${nextNumber}. `);
+    }
+
+    function handleNoteKeydown(event) {
+      if (event.key === 'Enter') {
+        const textarea = event.target;
+        const start = textarea.selectionStart;
+        const currentValue = textarea.value;
+        
+        // Find the start of the current line
+        const beforeCursor = currentValue.substring(0, start);
+        const lineStart = beforeCursor.lastIndexOf('\n') + 1;
+        const currentLine = beforeCursor.substring(lineStart);
+        
+        // Check if current line is a numbered list item
+        const numberedMatch = currentLine.match(/^(\d+)\.\s/);
+        if (numberedMatch) {
+          event.preventDefault();
+          const currentNumber = parseInt(numberedMatch[1]);
+          const nextNumber = currentNumber + 1;
+          
+          // Check if line is empty (just the number)
+          if (currentLine.trim() === `${currentNumber}.`) {
+            // Remove the empty numbered item
+            textarea.value = currentValue.substring(0, lineStart) + currentValue.substring(start);
+            textarea.selectionStart = textarea.selectionEnd = lineStart;
+          } else {
+            // Insert new numbered item
+            const insertion = `\n${nextNumber}. `;
+            textarea.value = currentValue.substring(0, start) + insertion + currentValue.substring(start);
+            textarea.selectionStart = textarea.selectionEnd = start + insertion.length;
+          }
+          return;
+        }
+        
+        // Check if current line is a bullet list item
+        const bulletMatch = currentLine.match(/^-\s/);
+        if (bulletMatch) {
+          event.preventDefault();
+          
+          // Check if line is empty (just the bullet)
+          if (currentLine.trim() === '-') {
+            // Remove the empty bullet
+            textarea.value = currentValue.substring(0, lineStart) + currentValue.substring(start);
+            textarea.selectionStart = textarea.selectionEnd = lineStart;
+          } else {
+            // Insert new bullet
+            const insertion = `\n- `;
+            textarea.value = currentValue.substring(0, start) + insertion + currentValue.substring(start);
+            textarea.selectionStart = textarea.selectionEnd = start + insertion.length;
+          }
+          return;
+        }
+        
+        // Check if current line is a checkbox item
+        const checkboxMatch = currentLine.match(/^\[\s?\]\s/);
+        if (checkboxMatch) {
+          event.preventDefault();
+          
+          // Check if line is empty (just the checkbox)
+          if (currentLine.trim() === '[ ]' || currentLine.trim() === '[]') {
+            // Remove the empty checkbox
+            textarea.value = currentValue.substring(0, lineStart) + currentValue.substring(start);
+            textarea.selectionStart = textarea.selectionEnd = lineStart;
+          } else {
+            // Insert new checkbox
+            const insertion = `\n[ ] `;
+            textarea.value = currentValue.substring(0, start) + insertion + currentValue.substring(start);
+            textarea.selectionStart = textarea.selectionEnd = start + insertion.length;
+          }
+          return;
+        }
+      }
+    }
+
+    function insertHeading() {
+      insertTextAtCursor('# ');
+    }
+
+    function insertBold() {
+      insertTextAtCursor('**text**');
+    }
+
+    function insertItalic() {
+      insertTextAtCursor('*text*');
+    }
+
+    function insertTextAtCursor(text) {
+      const textarea = document.getElementById('note-content-input');
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const currentValue = textarea.value;
+      
+      // Insert text at cursor position
+      textarea.value = currentValue.substring(0, start) + text + currentValue.substring(end);
+      
+      // Move cursor
+      textarea.selectionStart = textarea.selectionEnd = start + text.length;
+      textarea.focus();
+    }
+
+    function closeNoteEditModal() {
+      document.getElementById('note-edit-modal').classList.remove('active');
+      currentEditingNote = null;
+    }
+
+    function closeNoteEditModalOnOverlay(event) {
+      if (event.target.id === 'note-edit-modal') closeNoteEditModal();
+    }
+
+    function selectNoteColor(color) {
+      currentNoteColor = color;
+      updateColorSelection();
+    }
+
+    function updateColorSelection() {
+      document.querySelectorAll('.color-option').forEach(opt => {
+        opt.classList.remove('selected');
+      });
+      document.querySelector(`.color-option.${currentNoteColor}`).classList.add('selected');
+    }
+
+    function saveCurrentNote() {
+      const title = document.getElementById('note-title-input').value.trim();
+      const content = document.getElementById('note-content-input').value.trim();
+      const pinned = document.getElementById('note-pinned-input').checked;
+
+      if (!title && !content) {
+        alert('Please add a title or content to your note');
+        return;
+      }
+
+      if (currentEditingNote) {
+        currentEditingNote.title = title;
+        currentEditingNote.content = content;
+        currentEditingNote.color = currentNoteColor;
+        currentEditingNote.category = currentNoteCategory;
+        currentEditingNote.pinned = pinned;
+        currentEditingNote.modifiedAt = new Date().toISOString();
+      } else {
+        const newNote = {
+          id: Date.now(),
+          title: title || 'Untitled',
+          content: content,
+          color: currentNoteColor,
+          category: currentNoteCategory,
+          pinned: pinned,
+          createdAt: new Date().toISOString(),
+          modifiedAt: new Date().toISOString()
+        };
+        notes.unshift(newNote);
+      }
+
+      saveNotes();
+      renderNotes();
+      renderPinnedNotes();
+      closeNoteEditModal();
+    }
+
+    function deleteCurrentNote() {
+      if (!currentEditingNote) return;
+      if (confirm('Delete this note?')) {
+        notes = notes.filter(n => n.id !== currentEditingNote.id);
+        saveNotes();
+        renderNotes();
+        renderPinnedNotes();
+        closeNoteEditModal();
+      }
+    }
+
+    function convertNoteToTask() {
+      const title = document.getElementById('note-title-input').value.trim();
+      const content = document.getElementById('note-content-input').value.trim();
+
+      if (!title && !content) {
+        alert('Note is empty');
+        return;
+      }
+
+      const taskTitle = title || content.split('\n')[0].substring(0, 100);
+      const taskNotes = content;
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      tasks.push({
+        id: Date.now(),
+        title: taskTitle,
+        category: 'personal',
+        status: 'todo',
+        dueDate: tomorrow.toISOString().split('T')[0],
+        importance: 3,
+        urgency: 3,
+        notes: taskNotes,
+        tags: [],
+        subtasks: [],
+        pinned: false,
+        createdAt: new Date().toISOString(),
+        recurring: false,
+        recurFrequency: '',
+        recurInterval: 1,
+        recurDays: []
+      });
+
+      saveTasks();
+      render();
+      updateStatsDisplay();
+
+      if (confirm('Note converted to task! Delete the original note?')) {
+        deleteCurrentNote();
+      } else {
+        closeNoteEditModal();
+      }
+
+      alert('✅ Task created successfully!');
+    }
+
+    function getTimeAgo(dateString) {
+      const now = new Date();
+      const past = new Date(dateString);
+      const diffMs = now - past;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return past.toLocaleDateString();
+    }
+
+    document.addEventListener('click', function (event) {
+      if (!event.target.closest('.menu-dropdown')) {
+        closeMenu();
+      }
+      if (!event.target.closest('.sort-dropdown')) {
+        document.querySelectorAll('.sort-dropdown-menu').forEach(menu => menu.classList.remove('show'));
+      }
+      if (!event.target.closest('.status-indicator') && !event.target.closest('.status-dropdown')) {
+        document.getElementById('status-dropdown').classList.remove('show');
+      }
+      if (!event.target.closest('.stats-popup') && !event.target.closest('.floating-badge.stats')) {
+        closeStatsPopup();
+      }
+    });
+
+    function toggleTaskStatus(id) {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+      if (task.status === 'todo') task.status = 'in-progress';
+      else if (task.status === 'in-progress') {
+        task.status = 'completed';
+        awardXP(task);
+        if (task.recurring) {
+          createNextRecurrence(task);
+        }
+      }
+      else task.status = 'todo';
+      saveTasks();
+      render();
+      updateStatsDisplay();
+      if (showCompleted) renderCompletedTasks();
+    }
+
+    function createNextRecurrence(completedTask) {
+      if (!completedTask.dueDate) return;
+
+      const currentDue = new Date(completedTask.dueDate);
+      let nextDue = new Date(currentDue);
+
+      if (completedTask.recurFrequency === 'daily') {
+        nextDue.setDate(nextDue.getDate() + 1);
+      } else if (completedTask.recurFrequency === 'weekly') {
+        if (completedTask.recurDays && completedTask.recurDays.length > 0) {
+          const today = currentDue.getDay();
+          const sortedDays = completedTask.recurDays.sort((a, b) => a - b);
+          let nextDay = sortedDays.find(d => d > today);
+          if (!nextDay) nextDay = sortedDays[0];
+          const daysToAdd = nextDay > today ? nextDay - today : 7 - today + nextDay;
+          nextDue.setDate(nextDue.getDate() + daysToAdd);
+        } else {
+          nextDue.setDate(nextDue.getDate() + 7);
+        }
+      } else if (completedTask.recurFrequency === 'monthly') {
+        nextDue.setMonth(nextDue.getMonth() + 1);
+      } else if (completedTask.recurFrequency === 'custom' && completedTask.recurInterval) {
+        nextDue.setDate(nextDue.getDate() + completedTask.recurInterval);
+      }
+
+      const newTask = {
+        id: Date.now(),
+        title: completedTask.title,
+        category: completedTask.category,
+        status: 'todo',
+        dueDate: nextDue.toISOString().split('T')[0],
+        dueTime: completedTask.dueTime || '',
+        importance: completedTask.importance,
+        urgency: completedTask.urgency,
+        notes: completedTask.notes,
+        tags: [...(completedTask.tags || [])],
+        subtasks: (completedTask.subtasks || []).map(st => ({ ...st, completed: false })),
+        estimatedDuration: completedTask.estimatedDuration,
+        pinned: false,
+        createdAt: new Date().toISOString(),
+        modifiedAt: new Date().toISOString(),
+        recurring: true,
+        recurFrequency: completedTask.recurFrequency,
+        recurInterval: completedTask.recurInterval,
+        recurDays: [...(completedTask.recurDays || [])]
+      };
+
+      tasks.push(newTask);
+      saveTasks();
+    }
+
+    function awardXP(task) {
+      const quad = getQuad(task.importance, task.urgency);
+      let xp = 10;
+      if (quad === 'do-first') xp = 50;
+      else if (quad === 'schedule') xp = 40;
+      else if (quad === 'delegate') xp = 20;
+      userStats.xp += xp;
+      userStats.level = Math.floor(userStats.xp / 100) + 1;
+      userStats.totalCompleted++;
+      userStats.weeklyCompleted++;
+      saveStats();
+    }
+
+    function deleteTask(id) {
+      if (confirm('Delete this task?')) {
+        tasks = tasks.filter(t => t.id !== id);
+        saveTasks();
+        render();
+        updateStatsDisplay();
+        if (showCompleted) renderCompletedTasks();
+      }
+    }
+
+    function toggleCompletedSection() {
+      showCompleted = !showCompleted;
+      const section = document.getElementById('completed-section');
+      const menuText = document.getElementById('menu-completed-text');
+      if (showCompleted) {
+        section.classList.add('show');
+        menuText.textContent = 'Hide Completed';
+        renderCompletedTasks();
+      } else {
+        section.classList.remove('show');
+        menuText.textContent = 'Show Completed';
+      }
+    }
+
+    function renderCompletedTasks() {
+      const completedTasks = tasks.filter(t => t.status === 'completed');
+      const container = document.getElementById('completed-tasks-list');
+      if (completedTasks.length === 0) {
+        container.innerHTML = '<div class="empty-state">No completed tasks yet</div>';
+        return;
+      }
+      container.innerHTML = completedTasks.map(t =>
+        `<div class="task ${t.category}" style="opacity:0.8;"><div class="task-content"><button class="icon-btn" onclick="toggleTaskStatus(${t.id})">✓</button><div class="task-info"><div class="task-title completed">${t.title}</div></div><button class="icon-btn" onclick="deleteTask(${t.id})">×</button></div></div>`
+      ).join('');
+    }
+
+    function clearCompleted() {
+      const completedTasks = tasks.filter(t => t.status === 'completed');
+      if (completedTasks.length === 0) return alert('No completed tasks');
+      if (confirm(`Delete all ${completedTasks.length} completed tasks?`)) {
+        tasks = tasks.filter(t => t.status !== 'completed');
+        saveTasks();
+        renderCompletedTasks();
+        render();
+        updateStatsDisplay();
+      }
+    }
+
+    function exportData() {
+      const data = JSON.stringify({ tasks, userStats, notes }, null, 2);
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `taskmatrix-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (!data.tasks || !Array.isArray(data.tasks)) return alert('Invalid file');
+          if (confirm('Import backup? This will replace current data.')) {
+            tasks = data.tasks;
+            userStats = data.userStats || userStats;
+            notes = data.notes || [];
+            saveTasks();
+            saveStats();
+            saveNotes();
+            render();
+            updateStatsDisplay();
+            alert('✅ Import successful!');
+          }
+        } catch (error) {
+          alert('❌ Import failed: ' + error.message);
+        }
+        event.target.value = '';
+      };
+      reader.readAsText(file);
+    }
+
+    function drag(e, task) {
+      draggedTask = task;
+      e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function dragEnd() { draggedTask = null; }
+    function allowDrop(e) { e.preventDefault(); }
+
+    function drop(e, quad) {
+      e.preventDefault();
+      if (!draggedTask) return;
+      let imp = 3, urg = 3;
+      if (quad === 'do-first') { imp = 5; urg = 5; }
+      else if (quad === 'schedule') { imp = 5; urg = 2; }
+      else if (quad === 'delegate') { imp = 2; urg = 5; }
+      else if (quad === 'eliminate') { imp = 2; urg = 2; }
+      const task = tasks.find(t => t.id === draggedTask.id);
+      if (task) { task.importance = imp; task.urgency = urg; }
+      draggedTask = null;
+      saveTasks();
+      render();
+    }
+
+    function getDueStatus(dueDate) {
+      if (!dueDate) return '';
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const due = new Date(dueDate); due.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) return 'overdue';
+      if (diffDays === 0) return 'today';
+      if (diffDays <= 7) return 'soon';
+      return '';
+    }
+
+    function isThisWeek(dateStr) {
+      if (!dateStr) return false;
+      const date = new Date(dateStr);
+      const today = new Date();
+      const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+      return date >= today && date <= weekFromNow;
+    }
+
+    function sortTasks(taskList, mode) {
+      let sorted = taskList.slice();
+      sorted.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return 0;
+      });
+      if (mode === 'date') {
+        sorted.sort((a, b) => {
+          if (a.pinned && !b.pinned) return -1;
+          if (!a.pinned && b.pinned) return 1;
+          if (!a.dueDate && !b.dueDate) return 0;
+          if (!a.dueDate) return 1;
+          if (!b.dueDate) return -1;
+          return new Date(a.dueDate) - new Date(b.dueDate);
+        });
+      } else if (mode === 'alpha') {
+        sorted.sort((a, b) => {
+          if (a.pinned && !b.pinned) return -1;
+          if (!a.pinned && b.pinned) return 1;
+          return a.title.toLowerCase().localeCompare(b.title.toLowerCase());
+        });
+      }
+      return sorted;
+    }
+
+    function applyFilters() {
+      filters.search = document.getElementById('search-input').value;
+      filters.category = document.getElementById('filter-category').value;
+      filters.status = document.getElementById('filter-status').value;
+      filters.date = document.getElementById('filter-date').value;
+      render();
+    }
+
+    function clearFilters() {
+      filters = { search: '', category: 'all', status: 'all', date: 'all' };
+      document.getElementById('search-input').value = '';
+      document.getElementById('filter-category').value = 'all';
+      document.getElementById('filter-status').value = 'all';
+      document.getElementById('filter-date').value = 'all';
+      render();
+    }
+
+    function togglePin(id) {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+      task.pinned = !task.pinned;
+      saveTasks();
+      render();
+    }
+
+    function toggleSortDropdown(quad, event) {
+      event.stopPropagation();
+      const menu = document.getElementById('sort-menu-' + quad);
+      const allMenus = document.querySelectorAll('.sort-dropdown-menu');
+      allMenus.forEach(m => { if (m.id !== 'sort-menu-' + quad) m.classList.remove('show'); });
+      menu.classList.toggle('show');
+    }
+
+    function setSortMode(quad, mode, event) {
+      event.stopPropagation();
+      sortModes[quad] = mode;
+      const menu = document.getElementById('sort-menu-' + quad);
+      const items = menu.querySelectorAll('.sort-dropdown-item');
+      items.forEach(item => {
+        item.classList.remove('active');
+        if (item.onclick.toString().includes("'" + mode + "'")) item.classList.add('active');
+      });
+      menu.classList.remove('show');
+      render();
+    }
+
+    function updateStatsDisplay() {
+      const activeTasks = tasks.filter(t => t.status !== 'completed');
+      const quadrants = {
+        'do-first': activeTasks.filter(t => getQuad(t.importance, t.urgency) === 'do-first'),
+        'schedule': activeTasks.filter(t => getQuad(t.importance, t.urgency) === 'schedule'),
+        'delegate': activeTasks.filter(t => getQuad(t.importance, t.urgency) === 'delegate'),
+        'eliminate': activeTasks.filter(t => getQuad(t.importance, t.urgency) === 'eliminate')
+      };
+
+      document.getElementById('popup-level').textContent = userStats.level;
+      document.getElementById('popup-xp').textContent = userStats.xp % 100;
+      document.getElementById('popup-weekly').textContent = userStats.weeklyCompleted + '/' + userStats.weeklyGoal;
+      document.getElementById('popup-completed').textContent = userStats.totalCompleted;
+
+      const xpPercent = (userStats.xp % 100);
+      document.getElementById('popup-xp-fill').style.width = xpPercent + '%';
+
+      const weeklyPercent = Math.min(100, (userStats.weeklyCompleted / userStats.weeklyGoal) * 100);
+      document.getElementById('popup-weekly-fill').style.width = weeklyPercent + '%';
+
+      document.getElementById('popup-stat-first').textContent = quadrants['do-first'].length;
+      document.getElementById('popup-stat-schedule').textContent = quadrants['schedule'].length;
+      document.getElementById('popup-stat-delegate').textContent = quadrants['delegate'].length;
+      document.getElementById('popup-stat-eliminate').textContent = quadrants['eliminate'].length;
+    }
+
+    function render() {
+      if (!document.getElementById('tasks-do-first')) return;
+
+      const activeTasks = tasks.filter(t => t.status !== 'completed');
+      const filteredTasks = activeTasks.filter(task => {
+        if (filters.search && !task.title.toLowerCase().includes(filters.search.toLowerCase())) return false;
+        if (filters.category !== 'all' && task.category !== filters.category) return false;
+        if (filters.status !== 'all' && task.status !== filters.status) return false;
+        if (filters.date !== 'all') {
+          const dueStatus = getDueStatus(task.dueDate);
+          if (filters.date === 'overdue' && dueStatus !== 'overdue') return false;
+          if (filters.date === 'today' && dueStatus !== 'today') return false;
+          if (filters.date === 'week' && !isThisWeek(task.dueDate)) return false;
+        }
+        return true;
+      });
+
+      const quadrants = {
+        'do-first': filteredTasks.filter(t => getQuad(t.importance, t.urgency) === 'do-first'),
+        'schedule': filteredTasks.filter(t => getQuad(t.importance, t.urgency) === 'schedule'),
+        'delegate': filteredTasks.filter(t => getQuad(t.importance, t.urgency) === 'delegate'),
+        'eliminate': filteredTasks.filter(t => getQuad(t.importance, t.urgency) === 'eliminate')
+      };
+
+      ['do-first', 'schedule', 'delegate', 'eliminate'].forEach(quad => {
+        const container = document.getElementById('tasks-' + quad);
+        const countId = quad === 'do-first' ? 'count-first' : 'count-' + quad;
+        const count = document.getElementById(countId);
+        if (!container || !count) return;
+
+        const sortedTasks = sortTasks(quadrants[quad], sortModes[quad]);
+        count.textContent = sortedTasks.length;
+
+        if (sortedTasks.length === 0) {
+          container.innerHTML = '<div class="empty-state">Drag tasks here</div>';
+        } else {
+          container.innerHTML = sortedTasks.map(task => {
+            const statusIcon = task.status === 'completed' ? '✓' : task.status === 'in-progress' ? '⏱' : '○';
+            const statusColor = task.status === 'completed' ? '#16a34a' : task.status === 'in-progress' ? '#3b82f6' : '#9ca3af';
+            const dueStatus = getDueStatus(task.dueDate);
+            let dueClass = '';
+            let dueBadge = '';
+            if (dueStatus === 'overdue') { dueClass = 'overdue'; dueBadge = '<span class="due-badge overdue">Overdue</span>'; }
+            else if (dueStatus === 'today') { dueClass = 'due-today'; dueBadge = '<span class="due-badge today">Today</span>'; }
+            else if (dueStatus === 'soon') { dueClass = 'due-soon'; dueBadge = '<span class="due-badge soon">This Week</span>'; }
+            const pinnedClass = task.pinned ? 'pinned' : '';
+            const pinIcon = task.pinned ? '📌' : '📍';
+            const recurBadge = task.recurring ? '<span class="recurring-badge">🔄</span>' : '';
+            const taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
+            return `<div class="task ${task.category} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()">
+              <div class="task-content">
+                <button class="icon-btn" onclick="event.stopPropagation(); toggleTaskStatus(${task.id})" style="color:${statusColor}; font-size:20px;">${statusIcon}</button>
+                <div class="task-info" onclick="openTaskModal(${task.id})"><div class="task-title ${task.status === 'completed' ? 'completed' : ''}">${task.title}${dueBadge}${recurBadge}</div></div>
+                <button class="pin-btn ${task.pinned ? 'pinned' : ''}" onclick="event.stopPropagation(); togglePin(${task.id})" title="Pin task">${pinIcon}</button>
+                <button class="icon-btn" onclick="event.stopPropagation(); deleteTask(${task.id})">×</button>
+              </div>
+            </div>`;
+          }).join('');
+        }
+      });
+
+      updateStatsDisplay();
+    }
+
+    function openTaskModal(taskId) {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      currentEditingTask = task;
+
+      document.getElementById('modal-main-title').textContent = 'Edit Task';
+      document.getElementById('modal-title').value = task.title;
+      document.getElementById('modal-notes').value = task.notes || '';
+      document.getElementById('modal-category').value = task.category;
+      document.getElementById('modal-date').value = task.dueDate || '';
+      document.getElementById('modal-time').value = task.dueTime || '';
+      document.getElementById('modal-importance').value = task.importance;
+      document.getElementById('modal-urgency').value = task.urgency;
+      document.getElementById('modal-duration').value = task.estimatedDuration || '';
+      document.getElementById('modal-recurring').checked = task.recurring || false;
+      document.getElementById('modal-recur-frequency').value = task.recurFrequency || 'daily';
+      document.getElementById('modal-recur-interval').value = task.recurInterval || 1;
+
+      document.querySelectorAll('.weekday-check').forEach(cb => {
+        cb.checked = (task.recurDays || []).includes(parseInt(cb.value));
+      });
+
+      toggleRecurringOptions();
+      updateSliderValue('importance');
+      updateSliderValue('urgency');
+      renderTags();
+      renderSubtasks();
+
+      document.getElementById('modal-created').textContent = new Date(task.createdAt || Date.now()).toLocaleDateString();
+      document.getElementById('modal-modified').textContent = new Date(task.modifiedAt || Date.now()).toLocaleDateString();
+      document.getElementById('modal-status').textContent = task.status;
+      const quadrantNames = { 'do-first': 'Do First', 'schedule': 'Schedule', 'delegate': 'Delegate', 'eliminate': 'Eliminate' };
+      document.getElementById('modal-quadrant').textContent = quadrantNames[getQuad(task.importance, task.urgency)];
+
+      document.getElementById('task-info-grid').style.display = 'grid';
+      document.getElementById('delete-task-btn').style.display = 'block';
+
+      document.getElementById('task-modal').classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeTaskModal() {
+      document.getElementById('task-modal').classList.remove('active');
+      document.body.style.overflow = 'auto';
+      currentEditingTask = null;
+    }
+
+    function closeModalOnOverlay(event) {
+      if (event.target.id === 'task-modal') closeTaskModal();
+    }
+
+    function updateSliderValue(type) {
+      const value = document.getElementById('modal-' + type).value;
+      document.getElementById(type + '-value').textContent = value;
+    }
+
+    function toggleRecurringOptions() {
+      const isRecurring = document.getElementById('modal-recurring').checked;
+      const options = document.getElementById('recurring-options');
+      options.style.display = isRecurring ? 'block' : 'none';
+      if (isRecurring) {
+        updateRecurringUI();
+      }
+    }
+
+    function updateRecurringUI() {
+      const frequency = document.getElementById('modal-recur-frequency').value;
+      document.getElementById('custom-days-input').style.display = frequency === 'custom' ? 'block' : 'none';
+      document.getElementById('weekdays-input').style.display = frequency === 'weekly' ? 'block' : 'none';
+    }
+
+    function saveTaskDetails() {
+      const title = document.getElementById('modal-title').value.trim();
+      if (!title) return alert('Please enter a task title');
+
+      const taskData = {
+        title: title,
+        notes: document.getElementById('modal-notes').value,
+        category: document.getElementById('modal-category').value,
+        dueDate: document.getElementById('modal-date').value,
+        dueTime: document.getElementById('modal-time').value,
+        importance: parseInt(document.getElementById('modal-importance').value),
+        urgency: parseInt(document.getElementById('modal-urgency').value),
+        estimatedDuration: parseInt(document.getElementById('modal-duration').value) || 0,
+        recurring: document.getElementById('modal-recurring').checked,
+        recurFrequency: document.getElementById('modal-recur-frequency').value,
+        recurInterval: parseInt(document.getElementById('modal-recur-interval').value) || 1,
+        recurDays: [],
+        tags: currentEditingTask ? currentEditingTask.tags : [],
+        subtasks: currentEditingTask ? currentEditingTask.subtasks : []
+      };
+
+      if (taskData.recurring && taskData.recurFrequency === 'weekly') {
+        document.querySelectorAll('.weekday-check:checked').forEach(cb => {
+          taskData.recurDays.push(parseInt(cb.value));
+        });
+      }
+
+      if (currentEditingTask) {
+        Object.assign(currentEditingTask, taskData);
+        currentEditingTask.modifiedAt = new Date().toISOString();
+      } else {
+        const newTask = {
+          id: Date.now(),
+          ...taskData,
+          status: 'todo',
+          pinned: false,
+          createdAt: new Date().toISOString(),
+          modifiedAt: new Date().toISOString()
+        };
+        tasks.push(newTask);
+      }
+
+      saveTasks();
+      render();
+      updateStatsDisplay();
+      closeTaskModal();
+    }
+
+    function deleteTaskFromModal() {
+      if (!currentEditingTask) return;
+      if (confirm('Delete this task?')) {
+        tasks = tasks.filter(t => t.id !== currentEditingTask.id);
+        saveTasks();
+        render();
+        updateStatsDisplay();
+        closeTaskModal();
+      }
+    }
+
+    function renderTags() {
+      if (!currentEditingTask) return;
+      const container = document.getElementById('tag-container');
+      container.innerHTML = '';
+      (currentEditingTask.tags || []).forEach(tag => {
+        const tagEl = document.createElement('div');
+        tagEl.className = 'tag';
+        tagEl.innerHTML = tag + '<button class="tag-remove" onclick="removeTag(\'' + tag + '\')">×</button>';
+        container.appendChild(tagEl);
+      });
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.id = 'tag-input';
+      input.className = 'tag-input';
+      input.placeholder = 'Add tags...';
+      input.onkeypress = handleTagInput;
+      container.appendChild(input);
+    }
+
+    function handleTagInput(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const input = document.getElementById('tag-input');
+        const tag = input.value.trim();
+        if (tag && currentEditingTask) {
+          if (!currentEditingTask.tags) currentEditingTask.tags = [];
+          if (!currentEditingTask.tags.includes(tag)) {
+            currentEditingTask.tags.push(tag);
+            input.value = '';
+            renderTags();
+          }
+        }
+      }
+    }
+
+    function removeTag(tag) {
+      if (!currentEditingTask) return;
+      currentEditingTask.tags = currentEditingTask.tags.filter(t => t !== tag);
+      renderTags();
+    }
+
+    function focusTagInput() {
+      document.getElementById('tag-input').focus();
+    }
+
+    function renderSubtasks() {
+      if (!currentEditingTask) return;
+      const container = document.getElementById('subtask-list');
+      if (!currentEditingTask.subtasks || currentEditingTask.subtasks.length === 0) {
+        container.innerHTML = '<div style="text-align:center; color:#9ca3af; padding:16px; font-size:14px;">No subtasks yet</div>';
+        return;
+      }
+      container.innerHTML = currentEditingTask.subtasks.map((subtask, index) =>
+        `<div class="subtask-item"><input type="checkbox" class="subtask-checkbox" ${subtask.completed ? 'checked' : ''} onchange="toggleSubtask(${index})"><span class="subtask-text ${subtask.completed ? 'completed' : ''}">${subtask.text}</span><button class="subtask-delete" onclick="deleteSubtask(${index})">×</button></div>`
+      ).join('');
+    }
+
+    function handleSubtaskInput(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const input = document.getElementById('subtask-input');
+        const text = input.value.trim();
+        if (text && currentEditingTask) {
+          if (!currentEditingTask.subtasks) currentEditingTask.subtasks = [];
+          currentEditingTask.subtasks.push({ text: text, completed: false });
+          input.value = '';
+          renderSubtasks();
+        }
+      }
+    }
+
+    function toggleSubtask(index) {
+      if (!currentEditingTask) return;
+      currentEditingTask.subtasks[index].completed = !currentEditingTask.subtasks[index].completed;
+      renderSubtasks();
+    }
+
+    function deleteSubtask(index) {
+      if (!currentEditingTask) return;
+      currentEditingTask.subtasks.splice(index, 1);
+      renderSubtasks();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+
+    // Add event listeners for floating badges
+    document.getElementById('stats-badge').addEventListener('click', toggleStatsPopup);
+    document.getElementById('notes-badge').addEventListener('click', openNotesModal);
+  </script>
+</body>
+
+</html>
+        
