@@ -2942,8 +2942,9 @@ Tips:
       if (session && session.user) {
         currentUser = session.user;
         updateAuthUI();
-        // Load tasks from Supabase (not localStorage)
+        // Load tasks from Supabase (not localStorage) - this will render tasks
         await syncFromSupabase();
+        // syncFromSupabase already calls render(), so we don't need to call it again
       } else {
         currentUser = null;
         updateAuthUI();
@@ -2971,16 +2972,17 @@ Tips:
           return t;
         });
         updateSyncStatus('synced');
+        // Only render when not signed in (signed-in case is handled by syncFromSupabase)
+        render();
+        renderNotes();
+        renderPinnedNotes();
+        updateStatsDisplay();
       }
 
       initPomodoro();
       if (typeof window !== 'undefined') {
         window.addEventListener('online', flushPendingTaskSync);
       }
-      render();
-      renderNotes();
-      renderPinnedNotes();
-      updateStatsDisplay();
     }
 
     function saveTasks() {
@@ -3190,31 +3192,34 @@ Tips:
     }
 
     async function handleSignOut() {
-      if (confirm('Sign out?')) {
-        try {
-          await supabase.auth.signOut();
-        } catch (err) {
-          console.error('Sign out error:', err);
-        }
-        // Clear all user-related state (matching supabase_minimal.html pattern)
-        currentUser = null;
-        tasks = [];
-        notes = [];
-        pendingTaskSyncQueue = [];
-        userStats = { xp: 0, level: 1, totalCompleted: 0, weeklyGoal: 10, weeklyCompleted: 0 };
-        // Clear localStorage for tasks/notes/stats
-        localStorage.removeItem('tasks');
-        localStorage.removeItem('notes');
-        localStorage.removeItem('userStats');
-        // Update UI
-        updateAuthUI();
-        updateSyncStatus('synced');
-        closeAuthModal();
-        render();
-        renderNotes();
-        renderPinnedNotes();
-        updateStatsDisplay();
+      if (!confirm('Sign out?')) return;
+      
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.error('Sign out error:', err);
       }
+      
+      // Clear all user-related state (matching supabase_minimal.html pattern)
+      currentUser = null;
+      tasks = [];
+      notes = [];
+      pendingTaskSyncQueue = [];
+      userStats = { xp: 0, level: 1, totalCompleted: 0, weeklyGoal: 10, weeklyCompleted: 0 };
+      
+      // Clear localStorage for tasks/notes/stats
+      localStorage.removeItem('tasks');
+      localStorage.removeItem('notes');
+      localStorage.removeItem('userStats');
+      
+      // Update UI
+      updateAuthUI();
+      updateSyncStatus('synced');
+      closeAuthModal();
+      render();
+      renderNotes();
+      renderPinnedNotes();
+      updateStatsDisplay();
     }
 
     function mapTaskFromSupabase(row) {
@@ -3464,7 +3469,7 @@ Tips:
           };
         } else {
           // Create initial stats (matching supabase_minimal.html pattern)
-          const { data: newStats } = await supabase
+          const { data: newStats, error: createError } = await supabase
             .from('user_stats')
             .insert([{
               user_id: userId,
@@ -3477,7 +3482,9 @@ Tips:
             .select()
             .single();
           
-          if (newStats) {
+          if (createError) {
+            console.error('Error creating stats:', createError);
+          } else if (newStats) {
             userStats.id = newStats.id;
           }
         }
@@ -4963,6 +4970,10 @@ Tips:
           updateAuthUI();
           await syncFromSupabase();
         }
+      } else if (event === 'INITIAL_SESSION' && session?.user) {
+        // Don't reload on initial session - init() already handles this
+        currentUser = session.user;
+        updateAuthUI();
       }
     });
 
