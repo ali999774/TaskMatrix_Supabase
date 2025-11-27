@@ -2597,10 +2597,10 @@ Tips:
       return task;
     }
 
-    function taskToSupabaseRow(task) {
+    function taskToSupabaseRow(task, userId) {
       return {
         id: task.id,
-        user_id: currentUser.id,
+        user_id: userId,
         title: task.title,
         category: task.category,
         status: task.status,
@@ -2614,7 +2614,11 @@ Tips:
       if (!currentUser) return;
       updateSyncStatus('syncing', 'Updating tasks...');
       try {
-        const rows = (taskList || []).map(taskToSupabaseRow);
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id || currentUser.id;
+        if (!userId) throw new Error('Missing user ID for task sync');
+
+        const rows = (taskList || []).map(task => taskToSupabaseRow(task, userId));
         if (rows.length === 0) {
           updateSyncStatus('synced');
           return;
@@ -2992,12 +2996,22 @@ Tips:
       if (!content) return '';
       // Simple text representation for preview
       return content
-        .replace(/\[\s\]/g, '☐')
-        .replace(/\[x\]/gi, '☑')
+        .replace(/-?\s*\[\s\]/g, '☐')
+        .replace(/-?\s*\[x\]/gi, '☑')
         .replace(/^- /gm, '• ')
         .replace(/^#+\s+(.+)$/gm, '$1')
         .replace(/\*\*(.+?)\*\*/g, '$1')
+        .replace(/__(.+?)__/g, '$1')
+        .replace(/~~(.+?)~~/g, '$1')
         .replace(/\*(.+?)\*/g, '$1');
+    }
+
+    function formatInlineNoteText(text) {
+      return text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/__(.*?)__/g, '<span style="text-decoration: underline;">$1</span>')
+        .replace(/~~(.*?)~~/g, '<del>$1</del>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>');
     }
 
     function parseNoteToHTML(content) {
@@ -3010,6 +3024,8 @@ Tips:
       
       lines.forEach(line => {
         const trimmed = line.trim();
+        const uncheckedMatch = trimmed.match(/^-?\s*\[\s\]\s?(.*)/);
+        const checkedMatch = trimmed.match(/^-?\s*\[x\]\s?(.*)/i);
         
         // Headings
         if (trimmed.startsWith('# ')) {
@@ -3021,25 +3037,25 @@ Tips:
           html += `<h4 style="font-size: 16px; font-weight: bold; margin: 10px 0 6px 0;">${trimmed.substring(3)}</h4>`;
         }
         // Checkboxes - unchecked
-        else if (trimmed.match(/^\[\s\]/)) {
+        else if (uncheckedMatch) {
           if (!inList || listType !== 'ul-check') {
             if (inList) html += `</${listType}>`;
             html += '<ul style="list-style: none; padding-left: 0;">';
             inList = true;
             listType = 'ul-check';
           }
-          const text = trimmed.substring(3).trim();
+          const text = formatInlineNoteText(uncheckedMatch[1].trim());
           html += `<li style="margin-bottom: 6px;"><input type="checkbox" style="margin-right: 8px; width: 16px; height: 16px; cursor: pointer;" disabled> <span>${text}</span></li>`;
         }
         // Checkboxes - checked
-        else if (trimmed.match(/^\[x\]/i)) {
+        else if (checkedMatch) {
           if (!inList || listType !== 'ul-check') {
             if (inList) html += `</${listType}>`;
             html += '<ul style="list-style: none; padding-left: 0;">';
             inList = true;
             listType = 'ul-check';
           }
-          const text = trimmed.substring(3).trim();
+          const text = formatInlineNoteText(checkedMatch[1].trim());
           html += `<li style="margin-bottom: 6px;"><input type="checkbox" checked style="margin-right: 8px; width: 16px; height: 16px; cursor: pointer;" disabled> <span class="checked-item">${text}</span></li>`;
         }
         // Bullets
@@ -3050,7 +3066,7 @@ Tips:
             inList = true;
             listType = 'ul';
           }
-          html += `<li>${trimmed.substring(2)}</li>`;
+          html += `<li>${formatInlineNoteText(trimmed.substring(2))}</li>`;
         }
         // Numbered
         else if (trimmed.match(/^\d+\.\s/)) {
@@ -3060,24 +3076,24 @@ Tips:
             inList = true;
             listType = 'ol';
           }
-          html += `<li>${trimmed.replace(/^\d+\.\s/, '')}</li>`;
+          html += `<li>${formatInlineNoteText(trimmed.replace(/^\d+\.\s/, ''))}</li>`;
         }
         // Bold
         else if (trimmed.includes('**')) {
           if (inList) { html += `</${listType}>`;  inList = false; }
-          const formatted = trimmed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+          const formatted = formatInlineNoteText(trimmed);
           html += `<p>${formatted}</p>`;
         }
         // Italic
         else if (trimmed.includes('*')) {
           if (inList) { html += `</${listType}>`;  inList = false; }
-          const formatted = trimmed.replace(/\*(.*?)\*/g, '<em>$1</em>');
+          const formatted = formatInlineNoteText(trimmed);
           html += `<p>${formatted}</p>`;
         }
         // Regular text
         else if (trimmed) {
           if (inList) { html += `</${listType}>`;  inList = false; }
-          html += `<p>${trimmed}</p>`;
+          html += `<p>${formatInlineNoteText(trimmed)}</p>`;
         }
         // Empty line
         else {
@@ -3199,12 +3215,7 @@ Tips:
     function setupNoteToolbar() {
       const editViewBtn = document.getElementById('edit-view-btn');
       const previewViewBtn = document.getElementById('preview-view-btn');
-      const bulletBtn = document.getElementById('bullet-btn');
-      const checkboxBtn = document.getElementById('checkbox-btn');
-      const numberedBtn = document.getElementById('numbered-btn');
-      const headingBtn = document.getElementById('heading-btn');
-      const boldBtn = document.getElementById('bold-btn');
-      const italicBtn = document.getElementById('italic-btn');
+      const noteToolbar = document.querySelector('.note-toolbar');
 
       // Category buttons
       const catIdeas = document.getElementById('cat-ideas');
@@ -3215,18 +3226,34 @@ Tips:
 
       if (editViewBtn) editViewBtn.onclick = () => switchNoteView('edit');
       if (previewViewBtn) previewViewBtn.onclick = () => switchNoteView('preview');
-      if (bulletBtn) bulletBtn.onclick = insertBullet;
-      if (checkboxBtn) checkboxBtn.onclick = insertCheckbox;
-      if (numberedBtn) numberedBtn.onclick = insertNumbered;
-      if (headingBtn) headingBtn.onclick = insertHeading;
-      if (boldBtn) boldBtn.onclick = insertBold;
-      if (italicBtn) italicBtn.onclick = insertItalic;
+      if (noteToolbar) noteToolbar.onclick = handleNoteToolbarClick;
 
       if (catIdeas) catIdeas.onclick = () => selectNoteCategory('ideas');
       if (catTasks) catTasks.onclick = () => selectNoteCategory('tasks');
       if (catReference) catReference.onclick = () => selectNoteCategory('reference');
       if (catNotes) catNotes.onclick = () => selectNoteCategory('notes');
       if (catQuick) catQuick.onclick = () => selectNoteCategory('quick');
+    }
+
+    function handleNoteToolbarClick(event) {
+      const toolbar = event.currentTarget;
+      const button = event.target.closest('.toolbar-btn');
+      if (!button || !toolbar.contains(button)) return;
+
+      const actionKey = (button.dataset.format || button.id || '').replace('-btn', '');
+      const actions = {
+        bullet: insertBullet,
+        checkbox: insertCheckbox,
+        numbered: insertNumbered,
+        heading: insertHeading,
+        bold: insertBold,
+        italic: insertItalic,
+        underline: insertUnderline,
+        strikethrough: insertStrikethrough
+      };
+
+      const action = actions[actionKey];
+      if (action) action();
     }
 
     function switchNoteView(mode) {
@@ -3253,16 +3280,41 @@ Tips:
       }
     }
 
+    function applyNoteTextUpdate(textarea, newValue, selectionStart, selectionEnd) {
+      if (!textarea) return;
+      textarea.value = newValue;
+      textarea.selectionStart = selectionStart;
+      textarea.selectionEnd = selectionEnd;
+      textarea.focus();
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
     function insertBullet() {
       insertTextAtCursor('- ');
     }
 
     function insertCheckbox() {
-      insertTextAtCursor('[ ] ');
+      const textarea = document.getElementById('note-content-input');
+      if (!textarea) return;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const currentValue = textarea.value;
+      const selectedText = currentValue.substring(start, end);
+      
+      const lineStart = currentValue.lastIndexOf('\n', start - 1) + 1;
+      const needsNewLine = lineStart !== start;
+      const prefix = needsNewLine ? '\n' : '';
+      const insertion = `${prefix}- [ ] ${selectedText}`;
+      const newValue = currentValue.substring(0, start) + insertion + currentValue.substring(end);
+      const selectionStart = start + prefix.length + 6; // position after "- [ ] "
+      const selectionEnd = selectionStart + selectedText.length;
+
+      applyNoteTextUpdate(textarea, newValue, selectionStart, selectionEnd);
     }
 
     function insertNumbered() {
       const textarea = document.getElementById('note-content-input');
+      if (!textarea) return;
       const start = textarea.selectionStart;
       const currentValue = textarea.value;
       
@@ -3339,18 +3391,19 @@ Tips:
         }
         
         // Check if current line is a checkbox item
-        const checkboxMatch = currentLine.match(/^\[\s?\]\s/);
+        const checkboxMatch = currentLine.match(/^-?\s*\[\s?\]\s/);
         if (checkboxMatch) {
           event.preventDefault();
+          const trimmedLine = currentLine.trim();
           
           // Check if line is empty (just the checkbox)
-          if (currentLine.trim() === '[ ]' || currentLine.trim() === '[]') {
+          if (trimmedLine === '- [ ]' || trimmedLine === '[ ]' || trimmedLine === '[]') {
             // Remove the empty checkbox
             textarea.value = currentValue.substring(0, lineStart) + currentValue.substring(start);
             textarea.selectionStart = textarea.selectionEnd = lineStart;
           } else {
             // Insert new checkbox
-            const insertion = `\n[ ] `;
+            const insertion = `\n- [ ] `;
             textarea.value = currentValue.substring(0, start) + insertion + currentValue.substring(start);
             textarea.selectionStart = textarea.selectionEnd = start + insertion.length;
           }
@@ -3364,25 +3417,61 @@ Tips:
     }
 
     function insertBold() {
-      insertTextAtCursor('**text**');
+      applyWrappedFormat('bold');
     }
 
     function insertItalic() {
-      insertTextAtCursor('*text*');
+      applyWrappedFormat('italic');
+    }
+
+    function insertUnderline() {
+      applyWrappedFormat('underline');
+    }
+
+    function insertStrikethrough() {
+      applyWrappedFormat('strikethrough');
     }
 
     function insertTextAtCursor(text) {
       const textarea = document.getElementById('note-content-input');
+      if (!textarea) return;
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
       const currentValue = textarea.value;
       
       // Insert text at cursor position
-      textarea.value = currentValue.substring(0, start) + text + currentValue.substring(end);
-      
-      // Move cursor
-      textarea.selectionStart = textarea.selectionEnd = start + text.length;
-      textarea.focus();
+      const newValue = currentValue.substring(0, start) + text + currentValue.substring(end);
+      const newPosition = start + text.length;
+
+      applyNoteTextUpdate(textarea, newValue, newPosition, newPosition);
+    }
+
+    function applyWrappedFormat(format) {
+      const textarea = document.getElementById('note-content-input');
+      if (!textarea) return;
+
+      const markers = {
+        bold: { marker: '**', placeholder: 'strong' },
+        italic: { marker: '*', placeholder: 'em' },
+        underline: { marker: '__', placeholder: 'underline' },
+        strikethrough: { marker: '~~', placeholder: 'strike' }
+      };
+
+      const config = markers[format];
+      if (!config) return;
+
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const currentValue = textarea.value;
+      const selectedText = currentValue.substring(start, end);
+      const textToWrap = selectedText || config.placeholder;
+      const wrappedText = `${config.marker}${textToWrap}${config.marker}`;
+      const newValue = currentValue.substring(0, start) + wrappedText + currentValue.substring(end);
+
+      const selectionStart = start + config.marker.length;
+      const selectionEnd = selectionStart + textToWrap.length;
+
+      applyNoteTextUpdate(textarea, newValue, selectionStart, selectionEnd);
     }
 
     function closeNoteEditModal() {
