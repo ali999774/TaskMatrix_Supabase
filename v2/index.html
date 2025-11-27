@@ -2936,38 +2936,46 @@ Tips:
       document.documentElement.setAttribute('data-theme', savedTheme);
       updateThemeIcon(savedTheme);
 
-      const saved = localStorage.getItem('tasks');
-      const savedStats = localStorage.getItem('userStats');
-      const savedNotes = localStorage.getItem('notes');
+      // Check session first (matching supabase_minimal.html pattern)
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session && session.user) {
+        currentUser = session.user;
+        updateAuthUI();
+        // Load tasks from Supabase (not localStorage)
+        await syncFromSupabase();
+      } else {
+        currentUser = null;
+        updateAuthUI();
+        // Load from localStorage only if not signed in
+        const saved = localStorage.getItem('tasks');
+        const savedStats = localStorage.getItem('userStats');
+        const savedNotes = localStorage.getItem('notes');
 
-      if (saved) tasks = JSON.parse(saved);
-      if (savedStats) userStats = JSON.parse(savedStats);
-      if (savedNotes) {
-        notes = JSON.parse(savedNotes);
-        // Ensure all notes have a category
-        notes = notes.map(n => {
-          if (!n.category) n.category = 'notes';
-          return n;
+        if (saved) tasks = JSON.parse(saved);
+        if (savedStats) userStats = JSON.parse(savedStats);
+        if (savedNotes) {
+          notes = JSON.parse(savedNotes);
+          notes = notes.map(n => {
+            if (!n.category) n.category = 'notes';
+            return n;
+          });
+        }
+
+        tasks = tasks.map(t => {
+          if (t.pinned === undefined) t.pinned = false;
+          if (t.recurring === undefined) t.recurring = false;
+          if (t.recurFrequency === undefined) t.recurFrequency = '';
+          if (t.recurInterval === undefined) t.recurInterval = 1;
+          if (t.recurDays === undefined) t.recurDays = [];
+          return t;
         });
+        updateSyncStatus('synced');
       }
-
-      tasks = tasks.map(t => {
-        if (t.pinned === undefined) t.pinned = false;
-        if (t.recurring === undefined) t.recurring = false;
-        if (t.recurFrequency === undefined) t.recurFrequency = '';
-        if (t.recurInterval === undefined) t.recurInterval = 1;
-        if (t.recurDays === undefined) t.recurDays = [];
-        return t;
-      });
-
-      await restoreSession();
 
       initPomodoro();
       if (typeof window !== 'undefined') {
         window.addEventListener('online', flushPendingTaskSync);
-      }
-      if (currentUser && navigator.onLine) {
-        await flushPendingTaskSync().catch(console.error);
       }
       render();
       renderNotes();
@@ -3390,14 +3398,13 @@ Tips:
       }
     }
 
+    // restoreSession is now handled in init() - keeping for backward compatibility if called elsewhere
     async function restoreSession() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session && session.user) {
           currentUser = session.user;
           updateAuthUI();
-          // Don't block on queue flush - syncFromSupabase will handle it
-          flushPendingTaskSync().catch(console.error);
           await syncFromSupabase();
         } else {
           currentUser = null;
@@ -3420,7 +3427,7 @@ Tips:
         const userId = currentUser.id;
         if (!userId) throw new Error('Missing user ID for fetch');
 
-        // Flush queue in background (non-blocking)
+        // Flush queue in background (non-blocking) - don't block on it
         if (navigator.onLine && pendingTaskSyncQueue.length) {
           flushPendingTaskSync().catch(err => console.error('Background queue flush error:', err));
         }
@@ -3489,7 +3496,7 @@ Tips:
           }
         }
 
-        // Save to localStorage
+        // Save to localStorage after loading from Supabase
         saveTasks();
         saveStats();
         saveNotes();
@@ -3506,6 +3513,11 @@ Tips:
         updateSyncStatus('synced');
       } catch (error) {
         console.error('Supabase sync error:', error);
+        // Ensure tasks array is set even on error
+        if (!tasks || tasks.length === 0) {
+          tasks = [];
+        }
+        render(); // Render even on error so UI isn't blank
         updateSyncStatus('error', error.message || 'Failed to load tasks');
       } finally {
         isSyncing = false;
@@ -4921,10 +4933,11 @@ Tips:
       renderSubtasks();
     }
 
-    // Auth state change listener (handles automatic sign-out and token refresh)
+    // Auth state change listener (simplified - matching supabase_minimal.html pattern)
+    // Note: supabase_minimal.html doesn't use onAuthStateChange, but we keep it for cross-tab sync
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
-        // Clear all state on sign out (handles automatic sign-outs)
+        // Clear all state on sign out
         currentUser = null;
         tasks = [];
         notes = [];
@@ -4943,12 +4956,13 @@ Tips:
         // Update user if token refreshed (don't reload tasks)
         currentUser = session.user;
         updateAuthUI();
-      } else if (event === 'SIGNED_IN' && session?.user && !currentUser) {
-        // Only handle SIGNED_IN if we don't already have a user (avoid duplicate sync)
-        // This handles cases where user signs in from another tab
-        currentUser = session.user;
-        updateAuthUI();
-        await syncFromSupabase();
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        // Only sync if we don't already have this user (avoid duplicate sync on init)
+        if (!currentUser || currentUser.id !== session.user.id) {
+          currentUser = session.user;
+          updateAuthUI();
+          await syncFromSupabase();
+        }
       }
     });
 
