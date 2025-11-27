@@ -2654,6 +2654,15 @@ Tips:
       notice: ''
     };
 
+    async function getCurrentUserId() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        return user?.id || currentUser?.id || null;
+      } catch (e) {
+        return currentUser?.id || null;
+      }
+    }
+
     function toggleTheme() {
       const html = document.documentElement;
       const isDark = html.getAttribute('data-theme') === 'dark';
@@ -2956,6 +2965,9 @@ Tips:
       if (typeof window !== 'undefined') {
         window.addEventListener('online', flushPendingTaskSync);
       }
+      if (currentUser && navigator.onLine) {
+        await flushPendingTaskSync().catch(console.error);
+      }
       render();
       renderNotes();
       renderPinnedNotes();
@@ -3000,8 +3012,7 @@ Tips:
       if (!currentUser) return;
       if (!pendingTaskSyncQueue.length) return;
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        const userId = user?.id || currentUser.id;
+        const userId = await getCurrentUserId();
         if (!userId) return;
         const rows = pendingTaskSyncQueue.map(row => ({ ...row, user_id: userId }));
         pendingTaskSyncQueue = [];
@@ -3010,7 +3021,7 @@ Tips:
         updateSyncStatus('synced');
       } catch (err) {
         console.error('Flush task queue error', err);
-        updateSyncStatus('error', err.message);
+        updateSyncStatus('error', err.message || 'Queue flush failed');
       }
     }
 
@@ -3205,8 +3216,7 @@ Tips:
       if (!currentUser) return;
       updateSyncStatus('syncing', 'Updating tasks...');
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        const userId = user?.id || currentUser.id;
+        const userId = await getCurrentUserId();
         if (!userId) throw new Error('Missing user ID for task sync');
 
         const rows = (taskList || []).map(task => taskToSupabaseRow(task, userId));
@@ -3228,7 +3238,9 @@ Tips:
       if (!currentUser) return;
       updateSyncStatus('syncing', 'Replacing cloud tasks...');
       try {
-        await supabase.from('tasks').delete().eq('user_id', currentUser.id);
+        const userId = await getCurrentUserId();
+        if (!userId) throw new Error('Missing user ID for replace');
+        await supabase.from('tasks').delete().eq('user_id', userId);
         await syncTasksToSupabase(tasks);
       } catch (err) {
         console.error('Replace tasks error', err);
@@ -3239,7 +3251,9 @@ Tips:
     async function deleteTaskFromSupabase(id) {
       if (!currentUser) return;
       try {
-        await supabase.from('tasks').delete().eq('id', id).eq('user_id', currentUser.id);
+        const userId = await getCurrentUserId();
+        if (!userId) throw new Error('Missing user ID for delete');
+        await supabase.from('tasks').delete().eq('id', id).eq('user_id', userId);
         pendingTaskSyncQueue = [];
         updateSyncStatus('synced');
       } catch (err) {
@@ -3300,6 +3314,7 @@ Tips:
         if (session && session.user) {
           currentUser = session.user;
           updateAuthUI();
+          await flushPendingTaskSync().catch(console.error);
           await syncFromSupabase();
         } else {
           currentUser = null;
@@ -3318,13 +3333,20 @@ Tips:
       if (!currentUser) return;
       updateSyncStatus('syncing', 'Loading cloud data...');
       try {
-        const { data: tasksData, error: tasksError } = await supabase.from('tasks').select('*').eq('user_id', currentUser.id);
+        const userId = await getCurrentUserId();
+        if (!userId) throw new Error('Missing user ID for fetch');
+
+        if (navigator.onLine) {
+          await flushPendingTaskSync().catch(console.error);
+        }
+
+        const { data: tasksData, error: tasksError } = await supabase.from('tasks').select('*').eq('user_id', userId);
         if (tasksError) throw tasksError;
         const remoteTasksCount = Array.isArray(tasksData) ? tasksData.length : 0;
         let remoteTasks = (tasksData || []).map(mapTaskFromSupabase);
         let hasRemoteTasks = remoteTasks.length > 0;
 
-        const { data: userDataRow } = await supabase.from('user_data').select('*').eq('user_id', currentUser.id).maybeSingle();
+        const { data: userDataRow } = await supabase.from('user_data').select('*').eq('user_id', userId).maybeSingle();
         const mergedData = userDataRow ? (userDataRow.data || userDataRow.payload || userDataRow.content) : null;
 
         if (mergedData?.tasks?.length) {
@@ -3352,7 +3374,7 @@ Tips:
           await syncTasksToSupabase(remoteTasks);
         }
 
-        const { data: statsData } = await supabase.from('user_stats').select('*').eq('user_id', currentUser.id).maybeSingle();
+        const { data: statsData } = await supabase.from('user_stats').select('*').eq('user_id', userId).maybeSingle();
         if (statsData) {
           userStats = {
             id: statsData.id,
@@ -3364,7 +3386,7 @@ Tips:
           };
         } else {
           const { data: createdStats, error: createError } = await supabase.from('user_stats').insert([{
-            user_id: currentUser.id,
+            user_id: userId,
             xp: userStats.xp,
             level: userStats.level,
             total_completed: userStats.totalCompleted,
@@ -4815,6 +4837,7 @@ Tips:
         return;
       }
       if (event === 'INITIAL_SESSION') return;
+      await flushPendingTaskSync().catch(console.error);
       await syncFromSupabase();
     });
 
