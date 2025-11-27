@@ -1813,8 +1813,8 @@
             <div class="status-item">
               <div class="status-dot"></div><strong>Online</strong>
             </div>
-            <div class="status-item">✓ Synced with Local Storage</div>
-            <div class="status-item" style="color: #6b7280; font-size: 12px;">Last sync: Just now</div>
+            <div class="status-item" id="sync-status-label">✓ Synced with Local Storage</div>
+            <div class="status-item" style="color: #6b7280; font-size: 12px;" id="sync-status-text">Last sync: Just now</div>
           </div>
         </div>
         <button class="zen-icon-btn" onclick="toggleSearch()" title="Search & Filter">🔍</button>
@@ -1826,6 +1826,8 @@
             <button class="menu-item" onclick="exportData(); closeMenu()">📤 Export Data</button>
             <button class="menu-item" onclick="toggleCompletedSection(); closeMenu()">📋 <span
                 id="menu-completed-text">Show Completed</span></button>
+            <button class="menu-item" onclick="openAuthModal('signin'); closeMenu()" id="auth-menu-signin">🔐 Sign In / Sign Up</button>
+            <button class="menu-item" onclick="handleSignOut(); closeMenu()" id="auth-menu-signout" style="display:none;">🚪 Sign Out</button>
             <button class="menu-item" onclick="showAbout(); closeMenu()">ℹ️ About</button>
           </div>
         </div>
@@ -2299,7 +2301,42 @@ Tips:
     </div>
   </div>
 
+  <!-- Auth Modal -->
+  <div class="modal-overlay" id="auth-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="auth-modal-title">Sign In</div>
+        <button class="modal-close" onclick="closeAuthModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="auth-message" style="display:none; padding:12px; border-radius:8px; margin-bottom:12px;"></div>
+        <div class="form-group">
+          <label class="form-label" for="auth-email">Email</label>
+          <input type="email" id="auth-email" class="form-input" placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="auth-password">Password</label>
+          <input type="password" id="auth-password" class="form-input" placeholder="••••••••">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="auth-submit-btn" onclick="submitAuth()">Sign In</button>
+        <button class="btn btn-gray" id="auth-toggle-btn" onclick="toggleAuthMode()" style="margin-left:auto;">Need an account? Sign Up</button>
+        <button class="btn btn-red" id="auth-signout-btn" onclick="handleSignOut()" style="display:none;">Sign Out</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
+    const SUPABASE_URL = 'https://afnpnivrlmckvwilspfh.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmbnBuaXZybG1ja3Z3aWxzcGZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMwNDY2MDMsImV4cCI6MjA3ODYyMjYwM30.0bFGplQcP4zL6D-3QJIivpY8J1SFwkOIm-p-7Vfsvqg';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let currentUser = null;
+    let authMode = 'signin';
+    let isSyncing = false;
+    let lastSyncedAt = null;
     let tasks = [];
     let notes = [];
     let userStats = { xp: 0, level: 1, totalCompleted: 0, weeklyGoal: 10, weeklyCompleted: 0 };
@@ -2328,7 +2365,7 @@ Tips:
       if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
     }
 
-    function init() {
+    async function init() {
       const savedTheme = localStorage.getItem('theme') || 'light';
       document.documentElement.setAttribute('data-theme', savedTheme);
       updateThemeIcon(savedTheme);
@@ -2357,15 +2394,412 @@ Tips:
         return t;
       });
 
+      await restoreSession();
+
       render();
       renderNotes();
       renderPinnedNotes();
       updateStatsDisplay();
     }
 
-    function saveTasks() { localStorage.setItem('tasks', JSON.stringify(tasks)); }
-    function saveStats() { localStorage.setItem('userStats', JSON.stringify(userStats)); }
-    function saveNotes() { localStorage.setItem('notes', JSON.stringify(notes)); }
+    function saveTasks() {
+      localStorage.setItem('tasks', JSON.stringify(tasks));
+      if (currentUser && !isSyncing) {
+        syncTasksToSupabase().catch(console.error);
+        syncUserDataToSupabase().catch(console.error);
+      }
+    }
+    function saveStats() {
+      localStorage.setItem('userStats', JSON.stringify(userStats));
+      if (currentUser && !isSyncing) {
+        syncStatsToSupabase().catch(console.error);
+        syncUserDataToSupabase().catch(console.error);
+      }
+    }
+    function saveNotes() {
+      localStorage.setItem('notes', JSON.stringify(notes));
+      if (currentUser && !isSyncing) {
+        syncUserDataToSupabase().catch(console.error);
+      }
+    }
+
+    function updateSyncStatus(state, message = '') {
+      const statusLabel = document.getElementById('sync-status-label');
+      const statusText = document.getElementById('sync-status-text');
+      const indicator = document.querySelector('.status-indicator');
+      if (state === 'syncing') {
+        isSyncing = true;
+        if (statusLabel) statusLabel.textContent = '⟳ Syncing...';
+        if (statusText) statusText.textContent = message || 'Working...';
+        if (indicator) indicator.style.boxShadow = '0 0 0 2px var(--primary)';
+      } else if (state === 'synced') {
+        isSyncing = false;
+        lastSyncedAt = new Date();
+        if (statusLabel) statusLabel.textContent = currentUser ? '☁️ Supabase synced' : '✓ Synced with Local Storage';
+        if (statusText && lastSyncedAt) statusText.textContent = 'Last sync: ' + lastSyncedAt.toLocaleTimeString();
+        if (indicator) indicator.style.boxShadow = '0 0 0 2px var(--success-bg)';
+      } else if (state === 'error') {
+        isSyncing = false;
+        if (statusLabel) statusLabel.textContent = '⚠️ Sync issue';
+        if (statusText) statusText.textContent = message || 'Check your connection';
+        if (indicator) indicator.style.boxShadow = '0 0 0 2px var(--danger)';
+      }
+    }
+
+    function updateAuthUI() {
+      const signedIn = !!currentUser;
+      const signInBtn = document.getElementById('auth-menu-signin');
+      const signOutBtn = document.getElementById('auth-menu-signout');
+      const modalSignOut = document.getElementById('auth-signout-btn');
+      const submitBtn = document.getElementById('auth-submit-btn');
+      const title = document.getElementById('auth-modal-title');
+      if (signInBtn) signInBtn.style.display = signedIn ? 'none' : 'block';
+      if (signOutBtn) signOutBtn.style.display = signedIn ? 'block' : 'none';
+      if (modalSignOut) modalSignOut.style.display = signedIn ? 'inline-block' : 'none';
+      if (submitBtn) submitBtn.style.display = signedIn ? 'none' : 'inline-block';
+      if (title) title.textContent = signedIn ? 'Account' : (authMode === 'signup' ? 'Sign Up' : 'Sign In');
+      if (!signedIn) refreshAuthModeUI();
+      const indicator = document.querySelector('.status-indicator');
+      if (indicator) indicator.style.background = signedIn ? 'var(--success)' : '#f59e0b';
+      const statusLabel = document.getElementById('sync-status-label');
+      if (statusLabel) statusLabel.textContent = signedIn ? '☁️ Supabase connected' : '✓ Local mode';
+    }
+
+    function setAuthMessage(text, type = 'info') {
+      const msg = document.getElementById('auth-message');
+      if (!msg) return;
+      msg.style.display = text ? 'block' : 'none';
+      msg.style.background = type === 'error' ? 'var(--danger-bg)' : 'var(--success-bg)';
+      msg.style.color = type === 'error' ? 'var(--danger)' : 'var(--success)';
+      msg.textContent = text || '';
+    }
+
+    function refreshAuthModeUI() {
+      const submitBtn = document.getElementById('auth-submit-btn');
+      const toggleBtn = document.getElementById('auth-toggle-btn');
+      const title = document.getElementById('auth-modal-title');
+      if (submitBtn) submitBtn.textContent = authMode === 'signup' ? 'Sign Up' : 'Sign In';
+      if (toggleBtn) toggleBtn.textContent = authMode === 'signup' ? 'Have an account? Sign In' : 'Need an account? Sign Up';
+      if (title) title.textContent = authMode === 'signup' ? 'Sign Up' : 'Sign In';
+      setAuthMessage('');
+    }
+
+    function toggleAuthMode() {
+      authMode = authMode === 'signin' ? 'signup' : 'signin';
+      refreshAuthModeUI();
+    }
+
+    function openAuthModal(mode = 'signin') {
+      authMode = mode;
+      refreshAuthModeUI();
+      const modal = document.getElementById('auth-modal');
+      if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+      }
+    }
+
+    function closeAuthModal() {
+      const modal = document.getElementById('auth-modal');
+      if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = 'auto';
+      }
+      setAuthMessage('');
+    }
+
+    async function submitAuth() {
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      const submitBtn = document.getElementById('auth-submit-btn');
+      if (!email || !password) {
+        setAuthMessage('Please fill in email and password', 'error');
+        return;
+      }
+      setAuthMessage('');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = authMode === 'signup' ? 'Signing up...' : 'Signing in...';
+      }
+      try {
+        if (authMode === 'signup') {
+          const { error } = await supabase.auth.signUp({ email, password });
+          if (error) throw error;
+          setAuthMessage('Account created! Check your email to confirm.', 'success');
+          authMode = 'signin';
+          toggleAuthMode();
+        } else {
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          currentUser = data.user;
+          updateAuthUI();
+          closeAuthModal();
+          await syncFromSupabase();
+        }
+      } catch (err) {
+        setAuthMessage(err.message || 'Auth error', 'error');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = authMode === 'signup' ? 'Sign Up' : 'Sign In';
+        }
+      }
+    }
+
+    async function handleSignOut() {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.error(err);
+      }
+      currentUser = null;
+      updateAuthUI();
+      updateSyncStatus('synced');
+      closeAuthModal();
+    }
+
+    function mapTaskFromSupabase(row) {
+      return {
+        id: row.id,
+        title: row.title || 'Untitled',
+        category: row.category || 'personal',
+        status: row.status || 'todo',
+        dueDate: row.due_date || '',
+        importance: row.importance || 3,
+        urgency: row.urgency || 3,
+        notes: row.notes || '',
+        tags: row.tags || [],
+        subtasks: row.subtasks || [],
+        pinned: row.pinned || false,
+        createdAt: row.created_at || new Date().toISOString(),
+        modifiedAt: row.modified_at || new Date().toISOString(),
+        recurring: row.recurring || false,
+        recurFrequency: row.recur_frequency || '',
+        recurInterval: row.recur_interval || 1,
+        recurDays: row.recur_days || [],
+        dueTime: row.due_time || '',
+        estimatedDuration: row.estimated_duration || 0
+      };
+    }
+
+    function normalizeTask(task) {
+      if (task.pinned === undefined) task.pinned = false;
+      if (task.recurring === undefined) task.recurring = false;
+      if (task.recurFrequency === undefined) task.recurFrequency = '';
+      if (task.recurInterval === undefined) task.recurInterval = 1;
+      if (task.recurDays === undefined) task.recurDays = [];
+      if (task.tags === undefined) task.tags = [];
+      if (task.subtasks === undefined) task.subtasks = [];
+      if (task.notes === undefined) task.notes = '';
+      if (task.dueTime === undefined) task.dueTime = '';
+      if (task.estimatedDuration === undefined) task.estimatedDuration = 0;
+      if (!task.status) task.status = 'todo';
+      return task;
+    }
+
+    function taskToSupabaseRow(task) {
+      return {
+        id: task.id,
+        user_id: currentUser.id,
+        title: task.title,
+        category: task.category,
+        status: task.status,
+        due_date: task.dueDate || null,
+        importance: task.importance,
+        urgency: task.urgency
+      };
+    }
+
+    async function syncTasksToSupabase(taskList = tasks) {
+      if (!currentUser) return;
+      updateSyncStatus('syncing', 'Updating tasks...');
+      try {
+        const rows = (taskList || []).map(taskToSupabaseRow);
+        if (rows.length === 0) {
+          updateSyncStatus('synced');
+          return;
+        }
+        const { error } = await supabase.from('tasks').upsert(rows);
+        if (error) throw error;
+        updateSyncStatus('synced');
+      } catch (err) {
+        console.error('Sync tasks error', err);
+        updateSyncStatus('error', err.message);
+      }
+    }
+
+    async function replaceSupabaseTasksWithLocal() {
+      if (!currentUser) return;
+      updateSyncStatus('syncing', 'Replacing cloud tasks...');
+      try {
+        await supabase.from('tasks').delete().eq('user_id', currentUser.id);
+        await syncTasksToSupabase(tasks);
+      } catch (err) {
+        console.error('Replace tasks error', err);
+        updateSyncStatus('error', err.message);
+      }
+    }
+
+    async function deleteTaskFromSupabase(id) {
+      if (!currentUser) return;
+      try {
+        await supabase.from('tasks').delete().eq('id', id).eq('user_id', currentUser.id);
+        updateSyncStatus('synced');
+      } catch (err) {
+        console.error('Delete task error', err);
+        updateSyncStatus('error', err.message);
+      }
+    }
+
+    async function syncStatsToSupabase() {
+      if (!currentUser) return;
+      try {
+        const payload = {
+          xp: userStats.xp,
+          level: userStats.level,
+          total_completed: userStats.totalCompleted,
+          weekly_goal: userStats.weeklyGoal,
+          weekly_completed: userStats.weeklyCompleted
+        };
+        if (!userStats.id) {
+          const { data, error } = await supabase.from('user_stats').insert([{ user_id: currentUser.id, ...payload }]).select().single();
+          if (error) throw error;
+          userStats.id = data.id;
+        } else {
+          const { error } = await supabase.from('user_stats').update(payload).eq('id', userStats.id).eq('user_id', currentUser.id);
+          if (error) throw error;
+        }
+        updateSyncStatus('synced');
+      } catch (err) {
+        console.error('Stats sync error', err);
+        updateSyncStatus('error', err.message);
+      }
+    }
+
+    async function syncUserDataToSupabase() {
+      if (!currentUser) return;
+      try {
+        const payload = {
+          user_id: currentUser.id,
+          data: { tasks, userStats, notes }
+        };
+        await supabase.from('user_data').upsert(payload, { onConflict: 'user_id' });
+      } catch (err) {
+        if (err?.message && err.message.toLowerCase().includes('data')) {
+          try {
+            await supabase.from('user_data').upsert({ user_id: currentUser.id, payload: { tasks, userStats, notes } }, { onConflict: 'user_id' });
+          } catch (fallbackErr) {
+            console.error('user_data sync error', fallbackErr);
+          }
+        } else {
+          console.error('user_data sync error', err);
+        }
+      }
+    }
+
+    async function restoreSession() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && session.user) {
+          currentUser = session.user;
+          updateAuthUI();
+          await syncFromSupabase();
+        } else {
+          currentUser = null;
+          updateAuthUI();
+          updateSyncStatus('synced');
+        }
+      } catch (err) {
+        console.error('Session restore error', err);
+        currentUser = null;
+        updateAuthUI();
+        updateSyncStatus('error', 'Unable to restore session');
+      }
+    }
+
+    async function syncFromSupabase() {
+      if (!currentUser) return;
+      updateSyncStatus('syncing', 'Loading cloud data...');
+      try {
+        const { data: tasksData, error: tasksError } = await supabase.from('tasks').select('*').eq('user_id', currentUser.id);
+        if (tasksError) throw tasksError;
+        const remoteTasksCount = Array.isArray(tasksData) ? tasksData.length : 0;
+        let remoteTasks = (tasksData || []).map(mapTaskFromSupabase);
+        let hasRemoteTasks = remoteTasks.length > 0;
+
+        const { data: userDataRow } = await supabase.from('user_data').select('*').eq('user_id', currentUser.id).maybeSingle();
+        const mergedData = userDataRow ? (userDataRow.data || userDataRow.payload || userDataRow.content) : null;
+
+        if (mergedData?.tasks?.length) {
+          const mapped = mergedData.tasks.map(normalizeTask);
+          if (!hasRemoteTasks) {
+            remoteTasks = mapped;
+            hasRemoteTasks = true;
+          } else {
+            mapped.forEach(rt => {
+              const idx = remoteTasks.findIndex(t => t.id === rt.id);
+              if (idx >= 0) remoteTasks[idx] = { ...remoteTasks[idx], ...rt };
+              else remoteTasks.push(rt);
+            });
+          }
+        }
+
+        if (!hasRemoteTasks && tasks.length > 0) {
+          await syncTasksToSupabase(tasks);
+          remoteTasks = tasks.map(normalizeTask);
+          hasRemoteTasks = true;
+        } else if (hasRemoteTasks) {
+          tasks = remoteTasks.map(normalizeTask);
+        }
+        if (remoteTasksCount === 0 && remoteTasks.length > 0) {
+          await syncTasksToSupabase(remoteTasks);
+        }
+
+        const { data: statsData } = await supabase.from('user_stats').select('*').eq('user_id', currentUser.id).maybeSingle();
+        if (statsData) {
+          userStats = {
+            id: statsData.id,
+            xp: statsData.xp || 0,
+            level: statsData.level || 1,
+            totalCompleted: statsData.total_completed || 0,
+            weeklyGoal: statsData.weekly_goal || 10,
+            weeklyCompleted: statsData.weekly_completed || 0
+          };
+        } else {
+          const { data: createdStats, error: createError } = await supabase.from('user_stats').insert([{
+            user_id: currentUser.id,
+            xp: userStats.xp,
+            level: userStats.level,
+            total_completed: userStats.totalCompleted,
+            weekly_goal: userStats.weeklyGoal,
+            weekly_completed: userStats.weeklyCompleted
+          }]).select().single();
+          if (createError) throw createError;
+          userStats.id = createdStats.id;
+        }
+
+        if (mergedData?.userStats) {
+          userStats = { ...userStats, ...mergedData.userStats };
+        }
+        if (mergedData?.notes) {
+          notes = mergedData.notes;
+        }
+
+        isSyncing = true;
+        saveTasks();
+        saveStats();
+        saveNotes();
+        isSyncing = false;
+        if (currentUser) syncUserDataToSupabase().catch(console.error);
+        updateAuthUI();
+        updateSyncStatus('synced');
+      } catch (err) {
+        console.error('Supabase sync error', err);
+        updateSyncStatus('error', err.message);
+      } finally {
+        isSyncing = false;
+      }
+    }
 
     function getQuad(imp, urg) {
       if (urg >= 4 && imp >= 4) return 'do-first';
@@ -3182,6 +3616,7 @@ Tips:
     function deleteTask(id) {
       if (confirm('Delete this task?')) {
         tasks = tasks.filter(t => t.id !== id);
+        if (currentUser) deleteTaskFromSupabase(id);
         saveTasks();
         render();
         updateStatsDisplay();
@@ -3219,6 +3654,7 @@ Tips:
       const completedTasks = tasks.filter(t => t.status === 'completed');
       if (completedTasks.length === 0) return alert('No completed tasks');
       if (confirm(`Delete all ${completedTasks.length} completed tasks?`)) {
+        if (currentUser) completedTasks.forEach(t => deleteTaskFromSupabase(t.id));
         tasks = tasks.filter(t => t.status !== 'completed');
         saveTasks();
         renderCompletedTasks();
@@ -3242,7 +3678,7 @@ Tips:
       const file = event.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = function (e) {
+      reader.onload = async function (e) {
         try {
           const data = JSON.parse(e.target.result);
           if (!data.tasks || !Array.isArray(data.tasks)) return alert('Invalid file');
@@ -3255,6 +3691,11 @@ Tips:
             saveNotes();
             render();
             updateStatsDisplay();
+            if (currentUser) {
+              await replaceSupabaseTasksWithLocal();
+              await syncStatsToSupabase();
+              await syncUserDataToSupabase();
+            }
             alert('✅ Import successful!');
           }
         } catch (error) {
@@ -3592,6 +4033,7 @@ Tips:
       if (!currentEditingTask) return;
       if (confirm('Delete this task?')) {
         tasks = tasks.filter(t => t.id !== currentEditingTask.id);
+        if (currentUser) deleteTaskFromSupabase(currentEditingTask.id);
         saveTasks();
         render();
         updateStatsDisplay();
@@ -3681,6 +4123,17 @@ Tips:
       currentEditingTask.subtasks.splice(index, 1);
       renderSubtasks();
     }
+
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      currentUser = session?.user || null;
+      updateAuthUI();
+      if (!currentUser) {
+        updateSyncStatus('synced');
+        return;
+      }
+      if (event === 'INITIAL_SESSION') return;
+      await syncFromSupabase();
+    });
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
