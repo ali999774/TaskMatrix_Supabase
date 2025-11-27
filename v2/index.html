@@ -3013,7 +3013,11 @@ Tips:
     }
 
     async function flushPendingTaskSync() {
-      if (!currentUser) return;
+      if (!currentUser || !currentUser.id) {
+        // Clear queue if no user - don't flush with old user_id
+        pendingTaskSyncQueue = [];
+        return;
+      }
       if (!pendingTaskSyncQueue.length) return;
       
       // Don't block on queue flush - run in background
@@ -3021,17 +3025,12 @@ Tips:
       pendingTaskSyncQueue = [];
       
       try {
-        const userId = await getCurrentUserId();
-        if (!userId) {
-          // Re-queue if we don't have userId
-          pendingTaskSyncQueue = queueToFlush;
-          return;
-        }
+        const userId = currentUser.id; // Always use current user's ID
         
-        // Ensure all rows have user_id
+        // Ensure all rows have the current user's user_id (don't use old user_id from queue)
         const rows = queueToFlush.map(row => ({
           ...row,
-          user_id: row.user_id || userId
+          user_id: userId // Always use current user's ID
         }));
         
         const { error } = await supabase.from('tasks').upsert(rows);
@@ -3043,8 +3042,10 @@ Tips:
         }
       } catch (err) {
         console.error('Flush task queue error', err);
-        // Re-queue failed items
-        pendingTaskSyncQueue = [...queueToFlush, ...pendingTaskSyncQueue];
+        // Only re-queue if we still have a current user
+        if (currentUser && currentUser.id) {
+          pendingTaskSyncQueue = [...queueToFlush, ...pendingTaskSyncQueue];
+        }
         // Only update status if we're not already syncing
         if (!isSyncing) {
           updateSyncStatus('error', err.message || 'Queue flush failed');
@@ -3056,7 +3057,12 @@ Tips:
       const statusLabel = document.getElementById('sync-status-label');
       const statusText = document.getElementById('sync-status-text');
       const indicator = document.querySelector('.status-indicator');
-      if (state === 'syncing') {
+      if (state === 'loading') {
+        isSyncing = true;
+        if (statusLabel) statusLabel.textContent = '⟳ Loading...';
+        if (statusText) statusText.textContent = message || 'Loading cloud data...';
+        if (indicator) indicator.style.boxShadow = '0 0 0 2px var(--primary)';
+      } else if (state === 'syncing') {
         isSyncing = true;
         if (statusLabel) statusLabel.textContent = '⟳ Syncing...';
         if (statusText) statusText.textContent = message || 'Working...';
@@ -3176,15 +3182,31 @@ Tips:
     }
 
     async function handleSignOut() {
-      try {
-        await supabase.auth.signOut();
-      } catch (err) {
-        console.error(err);
+      if (confirm('Sign out?')) {
+        try {
+          await supabase.auth.signOut();
+        } catch (err) {
+          console.error('Sign out error:', err);
+        }
+        // Clear all user-related state (matching supabase_minimal.html pattern)
+        currentUser = null;
+        tasks = [];
+        notes = [];
+        pendingTaskSyncQueue = [];
+        userStats = { xp: 0, level: 1, totalCompleted: 0, weeklyGoal: 10, weeklyCompleted: 0 };
+        // Clear localStorage for tasks/notes/stats
+        localStorage.removeItem('tasks');
+        localStorage.removeItem('notes');
+        localStorage.removeItem('userStats');
+        // Update UI
+        updateAuthUI();
+        updateSyncStatus('synced');
+        closeAuthModal();
+        render();
+        renderNotes();
+        renderPinnedNotes();
+        updateStatsDisplay();
       }
-      currentUser = null;
-      updateAuthUI();
-      updateSyncStatus('synced');
-      closeAuthModal();
     }
 
     function mapTaskFromSupabase(row) {
@@ -3243,23 +3265,44 @@ Tips:
       };
     }
 
-    async function syncTasksToSupabase(taskList = tasks) {
+    // Simplified sync for single task (matching supabase_minimal.html pattern)
+    async function syncTaskToSupabase(task) {
       if (!currentUser) return;
-      const wasSyncing = isSyncing;
-      if (!wasSyncing) {
-        updateSyncStatus('syncing', 'Updating tasks...');
-      }
       try {
-        const userId = await getCurrentUserId();
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id || currentUser.id;
         if (!userId) throw new Error('Missing user ID for task sync');
 
-        const rows = (taskList || []).map(task => taskToSupabaseRow(task, userId));
-        if (rows.length === 0) {
-          if (!wasSyncing) {
-            updateSyncStatus('synced');
-          }
-          return;
-        }
+        const payload = {
+          id: task.id,
+          user_id: userId,
+          title: task.title,
+          category: task.category,
+          status: task.status,
+          due_date: task.dueDate,
+          importance: task.importance,
+          urgency: task.urgency
+        };
+
+        const { error } = await supabase
+          .from('tasks')
+          .upsert(payload);
+
+        if (error) throw error;
+      } catch (error) {
+        console.error('Sync error:', error);
+      }
+    }
+
+    // Batch sync for multiple tasks (used by saveTasks)
+    async function syncTasksToSupabase(taskList = tasks) {
+      if (!currentUser) return;
+      try {
+        const userId = currentUser.id;
+        if (!userId) return;
+
+        const rows = (taskList || []).map(task => taskToSupabaseRow(task, userId)).filter(row => row !== null);
+        if (rows.length === 0) return;
         
         // Ensure all rows have user_id
         const rowsWithUserId = rows.map(row => ({
@@ -3272,16 +3315,9 @@ Tips:
         
         // Clear queue after successful sync
         pendingTaskSyncQueue = [];
-        
-        if (!wasSyncing) {
-          updateSyncStatus('synced');
-        }
       } catch (err) {
         console.error('Sync tasks error', err);
-        if (!wasSyncing) {
-          updateSyncStatus('error', err.message || 'Failed to sync tasks');
-        }
-        throw err; // Re-throw so caller can handle if needed
+        // Don't update status here - let saveTasks handle it
       }
     }
 
@@ -3302,39 +3338,34 @@ Tips:
     async function deleteTaskFromSupabase(id) {
       if (!currentUser) return;
       try {
-        const userId = await getCurrentUserId();
-        if (!userId) throw new Error('Missing user ID for delete');
-        await supabase.from('tasks').delete().eq('id', id).eq('user_id', userId);
+        await supabase
+          .from('tasks')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', currentUser.id);
+        // Clear queue after successful delete
         pendingTaskSyncQueue = [];
-        updateSyncStatus('synced');
-      } catch (err) {
-        console.error('Delete task error', err);
-        updateSyncStatus('error', err.message);
+      } catch (error) {
+        console.error('Delete error:', error);
       }
     }
 
     async function syncStatsToSupabase() {
-      if (!currentUser) return;
+      if (!currentUser || !userStats.id) return;
       try {
-        const payload = {
-          xp: userStats.xp,
-          level: userStats.level,
-          total_completed: userStats.totalCompleted,
-          weekly_goal: userStats.weeklyGoal,
-          weekly_completed: userStats.weeklyCompleted
-        };
-        if (!userStats.id) {
-          const { data, error } = await supabase.from('user_stats').insert([{ user_id: currentUser.id, ...payload }]).select().single();
-          if (error) throw error;
-          userStats.id = data.id;
-        } else {
-          const { error } = await supabase.from('user_stats').update(payload).eq('id', userStats.id).eq('user_id', currentUser.id);
-          if (error) throw error;
-        }
-        updateSyncStatus('synced');
-      } catch (err) {
-        console.error('Stats sync error', err);
-        updateSyncStatus('error', err.message);
+        await supabase
+          .from('user_stats')
+          .update({
+            xp: userStats.xp,
+            level: userStats.level,
+            total_completed: userStats.totalCompleted,
+            weekly_goal: userStats.weeklyGoal,
+            weekly_completed: userStats.weeklyCompleted
+          })
+          .eq('id', userStats.id)
+          .eq('user_id', currentUser.id);
+      } catch (error) {
+        console.error('Stats sync error:', error);
       }
     }
 
@@ -3383,35 +3414,38 @@ Tips:
 
     async function syncFromSupabase() {
       if (!currentUser) return;
-      updateSyncStatus('syncing', 'Loading cloud data...');
+      updateSyncStatus('loading', 'Loading cloud data...');
       isSyncing = true;
       try {
-        let userId = currentUser?.id;
-        if (!userId) {
-          const { data: { session } } = await supabase.auth.getSession();
-          userId = session?.user?.id;
-        }
+        const userId = currentUser.id;
         if (!userId) throw new Error('Missing user ID for fetch');
 
+        // Flush queue in background (non-blocking)
         if (navigator.onLine && pendingTaskSyncQueue.length) {
           flushPendingTaskSync().catch(err => console.error('Background queue flush error:', err));
         }
 
+        // Load tasks - this is the primary source (matching supabase_minimal.html pattern)
         const { data: tasksData, error: tasksError } = await supabase
           .from('tasks')
           .select('*')
           .eq('user_id', userId);
+        
         if (tasksError) throw tasksError;
-
+        
+        // Map tasks directly (matching supabase_minimal.html pattern)
         tasks = (tasksData || []).map(mapTaskFromSupabase).map(normalizeTask);
+        
+        // Render immediately after loading tasks (matching supabase_minimal.html pattern)
         render();
 
+        // Load stats (matching supabase_minimal.html pattern)
         const { data: statsData, error: statsError } = await supabase
           .from('user_stats')
           .select('*')
           .eq('user_id', userId)
           .maybeSingle();
-        if (statsError && statsError.code !== 'PGRST116') throw statsError;
+        
         if (statsData) {
           userStats = {
             id: statsData.id,
@@ -3422,39 +3456,40 @@ Tips:
             weeklyCompleted: statsData.weekly_completed || 0
           };
         } else {
-          const { data: createdStats, error: createError } = await supabase
+          // Create initial stats (matching supabase_minimal.html pattern)
+          const { data: newStats } = await supabase
             .from('user_stats')
             .insert([{
               user_id: userId,
-              xp: userStats.xp || 0,
-              level: userStats.level || 1,
-              total_completed: userStats.totalCompleted || 0,
-              weekly_goal: userStats.weeklyGoal || 10,
-              weekly_completed: userStats.weeklyCompleted || 0
+              xp: 0,
+              level: 1,
+              total_completed: 0,
+              weekly_goal: 10,
+              weekly_completed: 0
             }])
             .select()
             .single();
-          if (createError) throw createError;
-          userStats.id = createdStats.id;
+          
+          if (newStats) {
+            userStats.id = newStats.id;
+          }
         }
 
-        const { data: userDataRow, error: userDataError } = await supabase
+        // Load notes from user_data (optional, non-blocking)
+        const { data: userDataRow } = await supabase
           .from('user_data')
           .select('*')
           .eq('user_id', userId)
           .maybeSingle();
-        if (!userDataError && userDataRow) {
+        
+        if (userDataRow) {
           const mergedData = userDataRow.data || userDataRow.payload || userDataRow.content;
-          if (mergedData?.userStats) {
-            userStats = { ...userStats, ...mergedData.userStats };
-          }
           if (mergedData?.notes) {
             notes = mergedData.notes;
           }
-        } else if (userDataError && userDataError.code !== 'PGRST116') {
-          console.error('user_data fetch error', userDataError);
         }
 
+        // Save to localStorage
         saveTasks();
         saveStats();
         saveNotes();
@@ -3462,15 +3497,16 @@ Tips:
         renderNotes();
         renderPinnedNotes();
 
+        // Sync user_data in background (non-blocking)
         if (currentUser) {
           syncUserDataToSupabase().catch(console.error);
         }
 
         updateAuthUI();
         updateSyncStatus('synced');
-      } catch (err) {
-        console.error('Supabase sync error', err);
-        updateSyncStatus('error', err.message || 'Failed to load tasks');
+      } catch (error) {
+        console.error('Supabase sync error:', error);
+        updateSyncStatus('error', error.message || 'Failed to load tasks');
       } finally {
         isSyncing = false;
       }
@@ -4885,16 +4921,35 @@ Tips:
       renderSubtasks();
     }
 
+    // Auth state change listener (handles automatic sign-out and token refresh)
     supabase.auth.onAuthStateChange(async (event, session) => {
-      currentUser = session?.user || null;
-      updateAuthUI();
-      if (!currentUser) {
+      if (event === 'SIGNED_OUT') {
+        // Clear all state on sign out (handles automatic sign-outs)
+        currentUser = null;
+        tasks = [];
+        notes = [];
+        pendingTaskSyncQueue = [];
+        userStats = { xp: 0, level: 1, totalCompleted: 0, weeklyGoal: 10, weeklyCompleted: 0 };
+        localStorage.removeItem('tasks');
+        localStorage.removeItem('notes');
+        localStorage.removeItem('userStats');
+        updateAuthUI();
         updateSyncStatus('synced');
-        return;
+        render();
+        renderNotes();
+        renderPinnedNotes();
+        updateStatsDisplay();
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        // Update user if token refreshed (don't reload tasks)
+        currentUser = session.user;
+        updateAuthUI();
+      } else if (event === 'SIGNED_IN' && session?.user && !currentUser) {
+        // Only handle SIGNED_IN if we don't already have a user (avoid duplicate sync)
+        // This handles cases where user signs in from another tab
+        currentUser = session.user;
+        updateAuthUI();
+        await syncFromSupabase();
       }
-      if (event === 'INITIAL_SESSION') return;
-      await flushPendingTaskSync().catch(console.error);
-      await syncFromSupabase();
     });
 
     if (document.readyState === 'loading') {
