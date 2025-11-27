@@ -2657,8 +2657,8 @@ Tips:
     async function getCurrentUserId() {
       if (currentUser?.id) return currentUser.id;
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        return session?.user?.id || null;
+        const { data: { user } } = await supabase.auth.getUser();
+        return user?.id || null;
       } catch (e) {
         return null;
       }
@@ -2936,47 +2936,15 @@ Tips:
       document.documentElement.setAttribute('data-theme', savedTheme);
       updateThemeIcon(savedTheme);
 
-      // Check session first (matching supabase_minimal.html pattern)
+      // Restore Supabase session first (same approach as supabase_minimal.html)
       const { data: { session } } = await supabase.auth.getSession();
-      
       if (session && session.user) {
         currentUser = session.user;
         updateAuthUI();
-        // Load tasks from Supabase (not localStorage) - this will render tasks
         await syncFromSupabase();
-        // syncFromSupabase already calls render(), so we don't need to call it again
       } else {
-        currentUser = null;
-        updateAuthUI();
-        // Load from localStorage only if not signed in
-        const saved = localStorage.getItem('tasks');
-        const savedStats = localStorage.getItem('userStats');
-        const savedNotes = localStorage.getItem('notes');
-
-        if (saved) tasks = JSON.parse(saved);
-        if (savedStats) userStats = JSON.parse(savedStats);
-        if (savedNotes) {
-          notes = JSON.parse(savedNotes);
-          notes = notes.map(n => {
-            if (!n.category) n.category = 'notes';
-            return n;
-          });
-        }
-
-        tasks = tasks.map(t => {
-          if (t.pinned === undefined) t.pinned = false;
-          if (t.recurring === undefined) t.recurring = false;
-          if (t.recurFrequency === undefined) t.recurFrequency = '';
-          if (t.recurInterval === undefined) t.recurInterval = 1;
-          if (t.recurDays === undefined) t.recurDays = [];
-          return t;
-        });
+        resetUserState(); // also renders local data if any
         updateSyncStatus('synced');
-        // Only render when not signed in (signed-in case is handled by syncFromSupabase)
-        render();
-        renderNotes();
-        renderPinnedNotes();
-        updateStatsDisplay();
       }
 
       initPomodoro();
@@ -3129,6 +3097,21 @@ Tips:
       setAuthMessage('');
     }
 
+    function resetUserState() {
+      currentUser = null;
+      tasks = [];
+      notes = [];
+      pendingTaskSyncQueue = [];
+      userStats = { xp: 0, level: 1, totalCompleted: 0, weeklyGoal: 10, weeklyCompleted: 0 };
+      localStorage.removeItem('tasks');
+      localStorage.removeItem('notes');
+      localStorage.removeItem('userStats');
+      render();
+      renderNotes();
+      renderPinnedNotes();
+      updateStatsDisplay();
+    }
+
     function toggleAuthMode() {
       authMode = authMode === 'signin' ? 'signup' : 'signin';
       refreshAuthModeUI();
@@ -3192,34 +3175,15 @@ Tips:
     }
 
     async function handleSignOut() {
-      if (!confirm('Sign out?')) return;
-      
       try {
         await supabase.auth.signOut();
       } catch (err) {
         console.error('Sign out error:', err);
       }
-      
-      // Clear all user-related state (matching supabase_minimal.html pattern)
-      currentUser = null;
-      tasks = [];
-      notes = [];
-      pendingTaskSyncQueue = [];
-      userStats = { xp: 0, level: 1, totalCompleted: 0, weeklyGoal: 10, weeklyCompleted: 0 };
-      
-      // Clear localStorage for tasks/notes/stats
-      localStorage.removeItem('tasks');
-      localStorage.removeItem('notes');
-      localStorage.removeItem('userStats');
-      
-      // Update UI
+      resetUserState();
       updateAuthUI();
       updateSyncStatus('synced');
       closeAuthModal();
-      render();
-      renderNotes();
-      renderPinnedNotes();
-      updateStatsDisplay();
     }
 
     function mapTaskFromSupabase(row) {
@@ -3286,15 +3250,16 @@ Tips:
         const userId = user?.id || currentUser.id;
         if (!userId) throw new Error('Missing user ID for task sync');
 
+        // Provide default values consistent with taskToSupabaseRow()
         const payload = {
           id: task.id,
           user_id: userId,
-          title: task.title,
-          category: task.category,
-          status: task.status,
-          due_date: task.dueDate,
-          importance: task.importance,
-          urgency: task.urgency
+          title: task.title || 'Untitled',
+          category: task.category || 'personal',
+          status: task.status || 'todo',
+          due_date: task.dueDate || null,
+          importance: task.importance || 3,
+          urgency: task.urgency || 3
         };
 
         const { error } = await supabase
@@ -3437,38 +3402,36 @@ Tips:
 
     async function syncFromSupabase() {
       if (!currentUser) return;
-      updateSyncStatus('loading', 'Loading cloud data...');
+      updateSyncStatus('syncing', 'Loading cloud data...');
       isSyncing = true;
       try {
-        const userId = currentUser.id;
+        const userId = await getCurrentUserId();
         if (!userId) throw new Error('Missing user ID for fetch');
 
-        // Flush queue in background (non-blocking) - don't block on it
         if (navigator.onLine && pendingTaskSyncQueue.length) {
-          flushPendingTaskSync().catch(err => console.error('Background queue flush error:', err));
+          try {
+            await flushPendingTaskSync();
+          } catch (err) {
+            console.error('Queue flush error (non-fatal):', err);
+          }
         }
 
-        // Load tasks - this is the primary source (matching supabase_minimal.html pattern)
         const { data: tasksData, error: tasksError } = await supabase
           .from('tasks')
           .select('*')
           .eq('user_id', userId);
-        
         if (tasksError) throw tasksError;
-        
-        // Map tasks directly (matching supabase_minimal.html pattern)
+
         tasks = (tasksData || []).map(mapTaskFromSupabase).map(normalizeTask);
-        
-        // Render immediately after loading tasks (matching supabase_minimal.html pattern)
         render();
 
-        // Load stats (matching supabase_minimal.html pattern)
         const { data: statsData, error: statsError } = await supabase
           .from('user_stats')
           .select('*')
           .eq('user_id', userId)
           .maybeSingle();
-        
+        if (statsError && statsError.code !== 'PGRST116') throw statsError;
+
         if (statsData) {
           userStats = {
             id: statsData.id,
@@ -3479,7 +3442,6 @@ Tips:
             weeklyCompleted: statsData.weekly_completed || 0
           };
         } else {
-          // Create initial stats (matching supabase_minimal.html pattern)
           const { data: newStats, error: createError } = await supabase
             .from('user_stats')
             .insert([{
@@ -3492,31 +3454,25 @@ Tips:
             }])
             .select()
             .single();
-          
-          if (createError) {
-            console.error('Error creating stats:', createError);
-            // Throw error to properly fail the sync operation
-            throw createError;
-          } else if (newStats) {
-            userStats.id = newStats.id;
-          }
+
+          if (createError) throw createError;
+          if (newStats) userStats.id = newStats.id;
         }
 
-        // Load notes from user_data (optional, non-blocking)
-        const { data: userDataRow } = await supabase
+        const { data: userDataRow, error: userDataError } = await supabase
           .from('user_data')
           .select('*')
           .eq('user_id', userId)
           .maybeSingle();
-        
-        if (userDataRow) {
+        if (!userDataError && userDataRow) {
           const mergedData = userDataRow.data || userDataRow.payload || userDataRow.content;
           if (mergedData?.notes) {
             notes = mergedData.notes;
           }
+        } else if (userDataError && userDataError.code !== 'PGRST116') {
+          console.error('user_data fetch error:', userDataError);
         }
 
-        // Save to localStorage after loading from Supabase
         saveTasks();
         saveStats();
         saveNotes();
@@ -3524,7 +3480,6 @@ Tips:
         renderNotes();
         renderPinnedNotes();
 
-        // Sync user_data in background (non-blocking)
         if (currentUser) {
           syncUserDataToSupabase().catch(console.error);
         }
@@ -3533,11 +3488,17 @@ Tips:
         updateSyncStatus('synced');
       } catch (error) {
         console.error('Supabase sync error:', error);
-        // Ensure tasks array is set even on error
-        if (!tasks || tasks.length === 0) {
-          tasks = [];
+        if (!tasks.length) {
+          const saved = localStorage.getItem('tasks');
+          if (saved) {
+            try {
+              tasks = JSON.parse(saved).map(normalizeTask);
+              render();
+            } catch (_) {}
+          }
+        } else {
+          render();
         }
-        render(); // Render even on error so UI isn't blank
         updateSyncStatus('error', error.message || 'Failed to load tasks');
       } finally {
         isSyncing = false;
@@ -4953,40 +4914,27 @@ Tips:
       renderSubtasks();
     }
 
-    // Auth state change listener (simplified - matching supabase_minimal.html pattern)
-    // Note: supabase_minimal.html doesn't use onAuthStateChange, but we keep it for cross-tab sync
+    // Auth state change listener (kept for cross-tab/session refresh)
     supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
-        // Clear all state on sign out
-        currentUser = null;
-        tasks = [];
-        notes = [];
-        pendingTaskSyncQueue = [];
-        userStats = { xp: 0, level: 1, totalCompleted: 0, weeklyGoal: 10, weeklyCompleted: 0 };
-        localStorage.removeItem('tasks');
-        localStorage.removeItem('notes');
-        localStorage.removeItem('userStats');
+      currentUser = session?.user || null;
+
+      if (!currentUser) {
+        resetUserState();
         updateAuthUI();
         updateSyncStatus('synced');
-        render();
-        renderNotes();
-        renderPinnedNotes();
-        updateStatsDisplay();
-      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        // Update user if token refreshed (don't reload tasks)
-        currentUser = session.user;
-        updateAuthUI();
-      } else if (event === 'SIGNED_IN' && session?.user) {
-        // Only sync if we don't already have this user (avoid duplicate sync on init)
-        if (!currentUser || currentUser.id !== session.user.id) {
-          currentUser = session.user;
-          updateAuthUI();
+        return;
+      }
+
+      updateAuthUI();
+
+      // Treat INITIAL_SESSION, SIGNED_IN, and TOKEN_REFRESHED as cues to ensure data is fresh
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        try {
+          await flushPendingTaskSync().catch(console.error);
           await syncFromSupabase();
+        } catch (err) {
+          console.error('Auth state sync error', err);
         }
-      } else if (event === 'INITIAL_SESSION' && session?.user) {
-        // Don't reload on initial session - init() already handles this
-        currentUser = session.user;
-        updateAuthUI();
       }
     });
 
