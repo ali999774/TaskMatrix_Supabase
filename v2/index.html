@@ -2655,11 +2655,12 @@ Tips:
     };
 
     async function getCurrentUserId() {
+      if (currentUser?.id) return currentUser.id;
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        return user?.id || currentUser?.id || null;
+        const { data: { session } } = await supabase.auth.getSession();
+        return session?.user?.id || null;
       } catch (e) {
-        return currentUser?.id || null;
+        return null;
       }
     }
 
@@ -3383,84 +3384,34 @@ Tips:
     async function syncFromSupabase() {
       if (!currentUser) return;
       updateSyncStatus('syncing', 'Loading cloud data...');
+      isSyncing = true;
       try {
-        const userId = await getCurrentUserId();
+        let userId = currentUser?.id;
+        if (!userId) {
+          const { data: { session } } = await supabase.auth.getSession();
+          userId = session?.user?.id;
+        }
         if (!userId) throw new Error('Missing user ID for fetch');
 
-        // Flush queue in background - don't block on it
-        if (navigator.onLine) {
-          flushPendingTaskSync().catch(err => {
-            console.error('Background queue flush error:', err);
-          });
+        if (navigator.onLine && pendingTaskSyncQueue.length) {
+          flushPendingTaskSync().catch(err => console.error('Background queue flush error:', err));
         }
 
-        // Load tasks from Supabase - this is the primary source
         const { data: tasksData, error: tasksError } = await supabase
           .from('tasks')
           .select('*')
           .eq('user_id', userId);
-        
         if (tasksError) throw tasksError;
-        
-        // Always set tasks array, even if empty
-        const remoteTasksCount = Array.isArray(tasksData) ? tasksData.length : 0;
-        let remoteTasks = Array.isArray(tasksData) ? (tasksData || []).map(mapTaskFromSupabase) : [];
-        let hasRemoteTasks = remoteTasks.length > 0;
 
-        // Try to load from user_data as fallback (legacy support)
-        const { data: userDataRow } = await supabase
-          .from('user_data')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle();
-        const mergedData = userDataRow ? (userDataRow.data || userDataRow.payload || userDataRow.content) : null;
-
-        if (mergedData?.tasks?.length) {
-          const mapped = mergedData.tasks.map(normalizeTask);
-          if (!hasRemoteTasks) {
-            remoteTasks = mapped;
-            hasRemoteTasks = true;
-          } else {
-            mapped.forEach(rt => {
-              const idx = remoteTasks.findIndex(t => t.id === rt.id);
-              if (idx >= 0) remoteTasks[idx] = { ...remoteTasks[idx], ...rt };
-              else remoteTasks.push(rt);
-            });
-          }
-        }
-
-        // If no remote tasks but we have local tasks, upload them
-        if (!hasRemoteTasks && tasks.length > 0) {
-          await syncTasksToSupabase(tasks).catch(err => {
-            console.error('Error syncing local tasks to cloud:', err);
-          });
-          remoteTasks = tasks.map(normalizeTask);
-          hasRemoteTasks = true;
-        } else if (hasRemoteTasks) {
-          // Use remote tasks - this is the source of truth
-          tasks = remoteTasks.map(normalizeTask);
-        } else {
-          // No remote tasks and no local tasks - set empty array
-          tasks = [];
-        }
-
-        // Render tasks immediately after loading
+        tasks = (tasksData || []).map(mapTaskFromSupabase).map(normalizeTask);
         render();
 
-        // If we got tasks from user_data but not from tasks table, sync them
-        if (remoteTasksCount === 0 && remoteTasks.length > 0) {
-          syncTasksToSupabase(remoteTasks).catch(err => {
-            console.error('Error syncing tasks to tasks table:', err);
-          });
-        }
-
-        // Load stats
-        const { data: statsData } = await supabase
+        const { data: statsData, error: statsError } = await supabase
           .from('user_stats')
           .select('*')
           .eq('user_id', userId)
           .maybeSingle();
-        
+        if (statsError && statsError.code !== 'PGRST116') throw statsError;
         if (statsData) {
           userStats = {
             id: statsData.id,
@@ -3487,41 +3438,41 @@ Tips:
           userStats.id = createdStats.id;
         }
 
-        if (mergedData?.userStats) {
-          userStats = { ...userStats, ...mergedData.userStats };
-        }
-        if (mergedData?.notes) {
-          notes = mergedData.notes;
+        const { data: userDataRow, error: userDataError } = await supabase
+          .from('user_data')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (!userDataError && userDataRow) {
+          const mergedData = userDataRow.data || userDataRow.payload || userDataRow.content;
+          if (mergedData?.userStats) {
+            userStats = { ...userStats, ...mergedData.userStats };
+          }
+          if (mergedData?.notes) {
+            notes = mergedData.notes;
+          }
+        } else if (userDataError && userDataError.code !== 'PGRST116') {
+          console.error('user_data fetch error', userDataError);
         }
 
-        // Save to localStorage
-        isSyncing = true;
         saveTasks();
         saveStats();
         saveNotes();
-        isSyncing = false;
-        
-        // Sync user_data in background (non-blocking)
+        updateStatsDisplay();
+        renderNotes();
+        renderPinnedNotes();
+
         if (currentUser) {
           syncUserDataToSupabase().catch(console.error);
         }
-        
+
         updateAuthUI();
         updateSyncStatus('synced');
       } catch (err) {
         console.error('Supabase sync error', err);
-        // Ensure tasks array is set even on error
-        if (!tasks || tasks.length === 0) {
-          tasks = [];
-        }
-        render(); // Render even on error so UI isn't blank
         updateSyncStatus('error', err.message || 'Failed to load tasks');
       } finally {
         isSyncing = false;
-        // Ensure sync status is never stuck
-        if (isSyncing) {
-          isSyncing = false;
-        }
       }
     }
 
