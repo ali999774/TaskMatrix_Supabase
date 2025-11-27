@@ -3181,9 +3181,11 @@ Tips:
         console.error('Sign out error:', err);
       }
       resetUserState();
+      authMode = 'signin';
+      refreshAuthModeUI();
       updateAuthUI();
       updateSyncStatus('synced');
-      closeAuthModal();
+      openAuthModal('signin');
     }
 
     function mapTaskFromSupabase(row) {
@@ -4920,8 +4922,11 @@ Tips:
 
       if (!currentUser) {
         resetUserState();
+        authMode = 'signin';
+        refreshAuthModeUI();
         updateAuthUI();
         updateSyncStatus('synced');
+        openAuthModal('signin');
         return;
       }
 
