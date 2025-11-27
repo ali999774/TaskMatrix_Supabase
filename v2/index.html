@@ -3310,6 +3310,7 @@ Tips:
     // Batch sync for multiple tasks (used by saveTasks)
     async function syncTasksToSupabase(taskList = tasks) {
       if (!currentUser) return;
+      const wasSyncing = isSyncing;
       try {
         const userId = currentUser.id;
         if (!userId) return;
@@ -3328,9 +3329,19 @@ Tips:
         
         // Clear queue after successful sync
         pendingTaskSyncQueue = [];
+        
+        // Only update status if we're not already syncing (to avoid interrupting main sync)
+        if (!wasSyncing) {
+          updateSyncStatus('synced');
+        }
       } catch (err) {
         console.error('Sync tasks error', err);
-        // Don't update status here - let saveTasks handle it
+        // Update sync status to show error to user
+        if (!wasSyncing) {
+          updateSyncStatus('error', err.message || 'Failed to sync tasks');
+        }
+        // Re-throw so caller can handle if needed
+        throw err;
       }
     }
 
@@ -3484,6 +3495,8 @@ Tips:
           
           if (createError) {
             console.error('Error creating stats:', createError);
+            // Throw error to properly fail the sync operation
+            throw createError;
           } else if (newStats) {
             userStats.id = newStats.id;
           }
