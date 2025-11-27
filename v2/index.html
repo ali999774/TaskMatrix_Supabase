@@ -3004,24 +3004,50 @@ Tips:
       if (!currentUser) return;
       const userId = currentUser.id;
       if (!userId) return;
-      pendingTaskSyncQueue = (taskList || []).map(task => taskToSupabaseRow(task, userId));
+      const rows = (taskList || [])
+        .map(task => taskToSupabaseRow(task, userId))
+        .filter(row => row !== null); // Filter out any null rows
+      pendingTaskSyncQueue = rows;
       updateSyncStatus('synced', 'Queued for sync when online');
     }
 
     async function flushPendingTaskSync() {
       if (!currentUser) return;
       if (!pendingTaskSyncQueue.length) return;
+      
+      // Don't block on queue flush - run in background
+      const queueToFlush = [...pendingTaskSyncQueue];
+      pendingTaskSyncQueue = [];
+      
       try {
         const userId = await getCurrentUserId();
-        if (!userId) return;
-        const rows = pendingTaskSyncQueue.map(row => ({ ...row, user_id: userId }));
-        pendingTaskSyncQueue = [];
+        if (!userId) {
+          // Re-queue if we don't have userId
+          pendingTaskSyncQueue = queueToFlush;
+          return;
+        }
+        
+        // Ensure all rows have user_id
+        const rows = queueToFlush.map(row => ({
+          ...row,
+          user_id: row.user_id || userId
+        }));
+        
         const { error } = await supabase.from('tasks').upsert(rows);
         if (error) throw error;
-        updateSyncStatus('synced');
+        
+        // Only update status if we're not already syncing (to avoid interrupting main sync)
+        if (!isSyncing) {
+          updateSyncStatus('synced');
+        }
       } catch (err) {
         console.error('Flush task queue error', err);
-        updateSyncStatus('error', err.message || 'Queue flush failed');
+        // Re-queue failed items
+        pendingTaskSyncQueue = [...queueToFlush, ...pendingTaskSyncQueue];
+        // Only update status if we're not already syncing
+        if (!isSyncing) {
+          updateSyncStatus('error', err.message || 'Queue flush failed');
+        }
       }
     }
 
@@ -3200,37 +3226,61 @@ Tips:
     }
 
     function taskToSupabaseRow(task, userId) {
+      if (!userId) {
+        console.error('taskToSupabaseRow called without userId', task);
+        return null;
+      }
       return {
         id: task.id,
         user_id: userId,
-        title: task.title,
-        category: task.category,
-        status: task.status,
+        title: task.title || 'Untitled',
+        category: task.category || 'personal',
+        status: task.status || 'todo',
         due_date: task.dueDate || null,
-        importance: task.importance,
-        urgency: task.urgency
+        importance: task.importance || 3,
+        urgency: task.urgency || 3
       };
     }
 
     async function syncTasksToSupabase(taskList = tasks) {
       if (!currentUser) return;
-      updateSyncStatus('syncing', 'Updating tasks...');
+      const wasSyncing = isSyncing;
+      if (!wasSyncing) {
+        updateSyncStatus('syncing', 'Updating tasks...');
+      }
       try {
         const userId = await getCurrentUserId();
         if (!userId) throw new Error('Missing user ID for task sync');
 
         const rows = (taskList || []).map(task => taskToSupabaseRow(task, userId));
         if (rows.length === 0) {
-          updateSyncStatus('synced');
+          if (!wasSyncing) {
+            updateSyncStatus('synced');
+          }
           return;
         }
-        const { error } = await supabase.from('tasks').upsert(rows);
+        
+        // Ensure all rows have user_id
+        const rowsWithUserId = rows.map(row => ({
+          ...row,
+          user_id: row.user_id || userId
+        }));
+        
+        const { error } = await supabase.from('tasks').upsert(rowsWithUserId);
         if (error) throw error;
+        
+        // Clear queue after successful sync
         pendingTaskSyncQueue = [];
-        updateSyncStatus('synced');
+        
+        if (!wasSyncing) {
+          updateSyncStatus('synced');
+        }
       } catch (err) {
         console.error('Sync tasks error', err);
-        updateSyncStatus('error', err.message);
+        if (!wasSyncing) {
+          updateSyncStatus('error', err.message || 'Failed to sync tasks');
+        }
+        throw err; // Re-throw so caller can handle if needed
       }
     }
 
@@ -3314,7 +3364,8 @@ Tips:
         if (session && session.user) {
           currentUser = session.user;
           updateAuthUI();
-          await flushPendingTaskSync().catch(console.error);
+          // Don't block on queue flush - syncFromSupabase will handle it
+          flushPendingTaskSync().catch(console.error);
           await syncFromSupabase();
         } else {
           currentUser = null;
@@ -3336,17 +3387,32 @@ Tips:
         const userId = await getCurrentUserId();
         if (!userId) throw new Error('Missing user ID for fetch');
 
+        // Flush queue in background - don't block on it
         if (navigator.onLine) {
-          await flushPendingTaskSync().catch(console.error);
+          flushPendingTaskSync().catch(err => {
+            console.error('Background queue flush error:', err);
+          });
         }
 
-        const { data: tasksData, error: tasksError } = await supabase.from('tasks').select('*').eq('user_id', userId);
+        // Load tasks from Supabase - this is the primary source
+        const { data: tasksData, error: tasksError } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('user_id', userId);
+        
         if (tasksError) throw tasksError;
+        
+        // Always set tasks array, even if empty
         const remoteTasksCount = Array.isArray(tasksData) ? tasksData.length : 0;
-        let remoteTasks = (tasksData || []).map(mapTaskFromSupabase);
+        let remoteTasks = Array.isArray(tasksData) ? (tasksData || []).map(mapTaskFromSupabase) : [];
         let hasRemoteTasks = remoteTasks.length > 0;
 
-        const { data: userDataRow } = await supabase.from('user_data').select('*').eq('user_id', userId).maybeSingle();
+        // Try to load from user_data as fallback (legacy support)
+        const { data: userDataRow } = await supabase
+          .from('user_data')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
         const mergedData = userDataRow ? (userDataRow.data || userDataRow.payload || userDataRow.content) : null;
 
         if (mergedData?.tasks?.length) {
@@ -3363,18 +3429,38 @@ Tips:
           }
         }
 
+        // If no remote tasks but we have local tasks, upload them
         if (!hasRemoteTasks && tasks.length > 0) {
-          await syncTasksToSupabase(tasks);
+          await syncTasksToSupabase(tasks).catch(err => {
+            console.error('Error syncing local tasks to cloud:', err);
+          });
           remoteTasks = tasks.map(normalizeTask);
           hasRemoteTasks = true;
         } else if (hasRemoteTasks) {
+          // Use remote tasks - this is the source of truth
           tasks = remoteTasks.map(normalizeTask);
-        }
-        if (remoteTasksCount === 0 && remoteTasks.length > 0) {
-          await syncTasksToSupabase(remoteTasks);
+        } else {
+          // No remote tasks and no local tasks - set empty array
+          tasks = [];
         }
 
-        const { data: statsData } = await supabase.from('user_stats').select('*').eq('user_id', userId).maybeSingle();
+        // Render tasks immediately after loading
+        render();
+
+        // If we got tasks from user_data but not from tasks table, sync them
+        if (remoteTasksCount === 0 && remoteTasks.length > 0) {
+          syncTasksToSupabase(remoteTasks).catch(err => {
+            console.error('Error syncing tasks to tasks table:', err);
+          });
+        }
+
+        // Load stats
+        const { data: statsData } = await supabase
+          .from('user_stats')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+        
         if (statsData) {
           userStats = {
             id: statsData.id,
@@ -3385,14 +3471,18 @@ Tips:
             weeklyCompleted: statsData.weekly_completed || 0
           };
         } else {
-          const { data: createdStats, error: createError } = await supabase.from('user_stats').insert([{
-            user_id: userId,
-            xp: userStats.xp,
-            level: userStats.level,
-            total_completed: userStats.totalCompleted,
-            weekly_goal: userStats.weeklyGoal,
-            weekly_completed: userStats.weeklyCompleted
-          }]).select().single();
+          const { data: createdStats, error: createError } = await supabase
+            .from('user_stats')
+            .insert([{
+              user_id: userId,
+              xp: userStats.xp || 0,
+              level: userStats.level || 1,
+              total_completed: userStats.totalCompleted || 0,
+              weekly_goal: userStats.weeklyGoal || 10,
+              weekly_completed: userStats.weeklyCompleted || 0
+            }])
+            .select()
+            .single();
           if (createError) throw createError;
           userStats.id = createdStats.id;
         }
@@ -3404,19 +3494,34 @@ Tips:
           notes = mergedData.notes;
         }
 
+        // Save to localStorage
         isSyncing = true;
         saveTasks();
         saveStats();
         saveNotes();
         isSyncing = false;
-        if (currentUser) syncUserDataToSupabase().catch(console.error);
+        
+        // Sync user_data in background (non-blocking)
+        if (currentUser) {
+          syncUserDataToSupabase().catch(console.error);
+        }
+        
         updateAuthUI();
         updateSyncStatus('synced');
       } catch (err) {
         console.error('Supabase sync error', err);
-        updateSyncStatus('error', err.message);
+        // Ensure tasks array is set even on error
+        if (!tasks || tasks.length === 0) {
+          tasks = [];
+        }
+        render(); // Render even on error so UI isn't blank
+        updateSyncStatus('error', err.message || 'Failed to load tasks');
       } finally {
         isSyncing = false;
+        // Ensure sync status is never stuck
+        if (isSyncing) {
+          isSyncing = false;
+        }
       }
     }
 
