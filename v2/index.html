@@ -2931,12 +2931,17 @@ Tips:
           const parsedNotes = JSON.parse(saved);
           if (Array.isArray(parsedNotes)) {
             notes = parsedNotes;
-            renderNotes();
-            renderPinnedNotes();
           }
         }
+        // Always render notes after loading (even if empty array)
+        renderNotes();
+        renderPinnedNotes();
       } catch (err) {
         console.error('Failed to load notes from local storage', err);
+        // Ensure notes is still an array even on error
+        if (!Array.isArray(notes)) notes = [];
+        renderNotes();
+        renderPinnedNotes();
       }
     }
 
@@ -3533,22 +3538,25 @@ Tips:
           .select('*')
           .eq('user_id', userId)
           .maybeSingle();
+        
+        // Preserve local notes before checking Supabase
+        const localNotesBackup = [...notes];
+        
         if (!userDataError && userDataRow) {
           const mergedData = userDataRow.data || userDataRow.payload || userDataRow.content;
           if (mergedData?.notes && Array.isArray(mergedData.notes) && mergedData.notes.length > 0) {
+            // Supabase has notes - use them
             notes = mergedData.notes;
           } else {
-            // Fallback to local notes if cloud has none
-            const localNotes = localStorage.getItem('notes');
-            if (localNotes) {
-              try { notes = JSON.parse(localNotes); } catch (_) { /* ignore */ }
-            }
+            // Supabase has no notes or empty array - keep local notes
+            notes = localNotesBackup.length > 0 ? localNotesBackup : notes;
           }
-          // If Supabase has no notes or empty array, keep local notes (they were loaded earlier)
         } else if (userDataError && userDataError.code !== 'PGRST116') {
           console.error('user_data fetch error:', userDataError);
+          // On error, keep local notes
+          notes = localNotesBackup.length > 0 ? localNotesBackup : notes;
         }
-        // If no userDataRow found, keep local notes (they were loaded earlier)
+        // If no userDataRow found, keep local notes (already loaded)
 
         saveTasks();
         saveStats();
