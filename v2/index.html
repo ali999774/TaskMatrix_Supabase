@@ -2655,6 +2655,7 @@ Tips:
     let hasLoadedInitialData = false;
     let pendingNoteSync = false;
     let pendingTaskSyncAfterCurrentSync = false;
+    let pendingNoteSyncQueued = false;
 
     function toggleTheme() {
       const html = document.documentElement;
@@ -2996,6 +2997,7 @@ Tips:
       initPomodoro();
       if (typeof window !== 'undefined') {
         window.addEventListener('online', flushPendingTaskSync);
+        window.addEventListener('online', flushPendingNoteSync);
       }
     }
 
@@ -3022,10 +3024,11 @@ Tips:
     function saveNotes() {
       localStorage.setItem('notes', JSON.stringify(notes));
       if (currentUser) {
-        if (!isSyncing) {
+        if (!isSyncing && navigator.onLine) {
           syncUserDataToSupabase().catch(console.error);
         } else {
           pendingNoteSync = true;
+          pendingNoteSyncQueued = true;
         }
       }
     }
@@ -3079,6 +3082,22 @@ Tips:
         if (!isSyncing) {
           updateSyncStatus('error', err.message || 'Queue flush failed');
         }
+      }
+    }
+
+    async function flushPendingNoteSync() {
+      if (!pendingNoteSyncQueued) return;
+      if (!currentUser || !navigator.onLine) return;
+      pendingNoteSyncQueued = false;
+      pendingNoteSync = false;
+      try {
+        await syncUserDataToSupabase();
+        updateSyncStatus('synced');
+      } catch (err) {
+        console.error('Flush note sync error', err);
+        pendingNoteSyncQueued = true;
+        pendingNoteSync = true;
+        updateSyncStatus('error', err.message || 'Note sync failed');
       }
     }
 
@@ -3555,7 +3574,11 @@ Tips:
         }
         if (pendingNoteSync) {
           pendingNoteSync = false;
-          syncUserDataToSupabase().catch(console.error);
+          pendingNoteSyncQueued = false;
+          syncUserDataToSupabase().catch(err => {
+            console.error(err);
+            pendingNoteSyncQueued = true;
+          });
         }
       }
     }
