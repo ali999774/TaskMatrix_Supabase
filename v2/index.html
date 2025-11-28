@@ -2612,10 +2612,9 @@ Tips:
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>
-    const SUPABASE_URL = 'https://afnpnivrlmckvwilspfh.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFmbnBuaXZybG1ja3Z3aWxzcGZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMwNDY2MDMsImV4cCI6MjA3ODYyMjYwM30.0bFGplQcP4zL6D-3QJIivpY8J1SFwkOIm-p-7Vfsvqg';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  <script type="module">
+    import { supabaseClient, initSupabaseAuth, signOutCurrentUser, getCurrentUserId } from './supabaseAuth.js';
+    const supabase = supabaseClient;
 
     let currentUser = null;
     let authMode = 'signin';
@@ -2654,16 +2653,6 @@ Tips:
       notice: ''
     };
     let hasLoadedInitialData = false;
-
-    async function getCurrentUserId() {
-      if (currentUser?.id) return currentUser.id;
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        return user?.id || null;
-      } catch (e) {
-        return null;
-      }
-    }
 
     function toggleTheme() {
       const html = document.documentElement;
@@ -2937,17 +2926,23 @@ Tips:
       document.documentElement.setAttribute('data-theme', savedTheme);
       updateThemeIcon(savedTheme);
 
-      // Restore Supabase session first (same approach as supabase_minimal.html)
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session && session.user) {
-        currentUser = session.user;
-        updateAuthUI();
-        await syncFromSupabase();
-        hasLoadedInitialData = true;
-      } else {
-        resetUserState(); // also renders local data if any
-        updateSyncStatus('synced');
-      }
+      await initSupabaseAuth({
+        onSignedIn: async (user) => {
+          currentUser = user;
+          updateAuthUI();
+          await syncFromSupabase();
+          hasLoadedInitialData = true;
+        },
+        onSignedOut: () => {
+          hasLoadedInitialData = false;
+          resetUserState(); // renders local data if any
+          authMode = 'signin';
+          refreshAuthModeUI();
+          updateAuthUI();
+          updateSyncStatus('synced');
+          openAuthModal('signin');
+        }
+      });
 
       initPomodoro();
       if (typeof window !== 'undefined') {
@@ -3178,17 +3173,10 @@ Tips:
 
     async function handleSignOut() {
       try {
-        await supabase.auth.signOut();
+        await signOutCurrentUser();
       } catch (err) {
         console.error('Sign out error:', err);
       }
-      hasLoadedInitialData = false;
-      resetUserState();
-      authMode = 'signin';
-      refreshAuthModeUI();
-      updateAuthUI();
-      updateSyncStatus('synced');
-      openAuthModal('signin');
     }
 
     function mapTaskFromSupabase(row) {
@@ -4918,34 +4906,6 @@ Tips:
       currentEditingTask.subtasks.splice(index, 1);
       renderSubtasks();
     }
-
-    // Auth state change listener (kept for cross-tab/session refresh)
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT' || !session?.user) {
-        hasLoadedInitialData = false;
-        resetUserState();
-        authMode = 'signin';
-        refreshAuthModeUI();
-        updateAuthUI();
-        updateSyncStatus('synced');
-        openAuthModal('signin');
-        return;
-      }
-
-      currentUser = session.user;
-      updateAuthUI();
-
-      // Load data on all sign-in style events, or if we somehow haven't loaded yet
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || !hasLoadedInitialData) {
-        try {
-          await flushPendingTaskSync().catch(console.error);
-          await syncFromSupabase();
-          hasLoadedInitialData = true;
-        } catch (err) {
-          console.error('Auth state sync error', err);
-        }
-      }
-    });
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
