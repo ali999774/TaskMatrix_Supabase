@@ -2980,7 +2980,20 @@ Tips:
       updateThemeIcon(savedTheme);
 
       const savedNotes = localStorage.getItem('notes');
-      if (savedNotes) notes = JSON.parse(savedNotes);
+      if (savedNotes) {
+        try {
+          notes = JSON.parse(savedNotes);
+        } catch (e) {
+          console.error('Failed to parse saved notes', e);
+          notes = [];
+        }
+      }
+      if (typeof renderNotes === 'function') {
+        renderNotes();
+      }
+      if (typeof renderPinnedNotes === 'function') {
+        renderPinnedNotes();
+      }
 
       bindUIEventHandlers();
 
@@ -3008,8 +3021,12 @@ Tips:
         window.addEventListener('online', flushPendingNoteSync);
       }
 
-      renderNotes();
-      renderPinnedNotes();
+      if (typeof renderNotes === 'function') {
+        renderNotes();
+      }
+      if (typeof renderPinnedNotes === 'function') {
+        renderPinnedNotes();
+      }
     }
 
     function saveTasks() {
@@ -3033,7 +3050,11 @@ Tips:
       }
     }
     function saveNotes() {
-      localStorage.setItem('notes', JSON.stringify(notes));
+      try {
+        localStorage.setItem('notes', JSON.stringify(notes));
+      } catch (e) {
+        console.error('Failed to save notes', e);
+      }
     }
 
     function enqueueTaskSync(taskList = tasks) {
@@ -3699,14 +3720,20 @@ Tips:
       const grid = document.getElementById('notes-grid');
       let filteredNotes = notes;
 
+      // Filter by category
+      if (noteCategoryFilter !== 'all') {
+        filteredNotes = filteredNotes.filter(n => n.category === noteCategoryFilter);
+      }
+
+      // Filter by search term
       if (searchTerm) {
-        filteredNotes = notes.filter(n =>
+        filteredNotes = filteredNotes.filter(n =>
           n.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
           n.content.toLowerCase().includes(searchTerm.toLowerCase())
         );
       }
 
-      if (filteredNotes.length === 0 && searchTerm === '') {
+      if (filteredNotes.length === 0 && searchTerm === '' && noteCategoryFilter === 'all') {
         grid.innerHTML = `
           <div class="empty-notes">
             <div class="empty-notes-icon">📝</div>
@@ -3717,31 +3744,54 @@ Tips:
         return;
       }
 
-      if (filteredNotes.length === 0 && searchTerm) {
+      if (filteredNotes.length === 0) {
         grid.innerHTML = `
           <div class="empty-notes">
             <div class="empty-notes-icon">🔍</div>
             <div class="empty-notes-text">No notes found</div>
-            <div class="empty-notes-subtext">Try a different search term</div>
+            <div class="empty-notes-subtext">Try a different filter or search term</div>
           </div>
         `;
         return;
       }
 
+      const categoryEmojis = {
+        'ideas': '💡',
+        'tasks': '✅',
+        'reference': '📚',
+        'notes': '📝',
+        'quick': '⚡'
+      };
+
       grid.innerHTML = filteredNotes.map(note => {
-        const preview = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
+        const rendered = renderNoteContent(note.content);
+        const preview = rendered.length > 100 ? rendered.substring(0, 100) + '...' : rendered;
         const timeAgo = getTimeAgo(note.modifiedAt);
+        const categoryEmoji = categoryEmojis[note.category || 'notes'];
         return `
-          <div class="note-card ${note.color}" onclick="editNote(${note.id})">
-            <div class="note-card-header">${note.title || 'Untitled'}</div>
-            <div class="note-card-content">${preview || 'Empty note'}</div>
-            <div class="note-card-footer">${timeAgo}</div>
+          <div class="note-card ${note.color}" style="position: relative;">
+            <button class="note-delete-btn" onclick="event.stopPropagation(); deleteNoteFromCard(${note.id})" title="Delete note">×</button>
+            <div class="note-category-badge">${categoryEmoji}</div>
+            <div onclick="editNote(${note.id})">
+              <div class="note-card-header">${note.title || 'Untitled'}</div>
+              <div class="note-card-content">${preview || 'Empty note'}</div>
+              <div class="note-card-footer">${timeAgo}</div>
+            </div>
           </div>
         `;
       }).join('');
     }
 
-    function filterNotes() {
+    function deleteNoteFromCard(noteId) {
+      if (confirm('Delete this note?')) {
+        notes = notes.filter(n => n.id !== noteId);
+        saveNotes();
+        renderNotes();
+        renderPinnedNotes();
+      }
+    }
+
+    function filterNotesByCategory(category) {
       noteCategoryFilter = category;
       updateFilterTabs();
       renderNotes();
@@ -3881,16 +3931,28 @@ Tips:
         return;
       }
 
+      const categoryEmojis = {
+        'ideas': '💡',
+        'tasks': '✅',
+        'reference': '📚',
+        'notes': '📝',
+        'quick': '⚡'
+      };
+
       container.classList.add('has-notes');
       grid.innerHTML = pinnedNotes.map(note => {
         const preview = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
+        const categoryEmoji = categoryEmojis[note.category || 'notes'];
         return `
-          <div class="note-card ${note.color}" onclick="editNote(${note.id})">
-            <div class="note-card-header">
-              <span>${note.title || 'Untitled'}</span>
-              <span style="font-size: 12px;">📌</span>
+          <div class="note-card ${note.color}" style="position: relative;">
+            <button class="note-delete-btn" onclick="event.stopPropagation(); deleteNoteFromCard(${note.id})" title="Delete note">×</button>
+            <div onclick="editNote(${note.id})">
+              <div class="note-card-header">
+                <span>${note.title || 'Untitled'}</span>
+                <span style="font-size: 12px;">📌 ${categoryEmoji}</span>
+              </div>
+              <div class="note-card-content">${preview || 'Empty note'}</div>
             </div>
-            <div class="note-card-content">${preview || 'Empty note'}</div>
           </div>
         `;
       }).join('');
@@ -3904,6 +3966,8 @@ Tips:
     function createNewNote() {
       currentEditingNote = null;
       currentNoteColor = 'yellow';
+      currentNoteCategory = 'notes';
+      noteViewMode = 'edit';
       document.getElementById('note-title-input').value = '';
       document.getElementById('note-content-input').value = '';
       document.getElementById('note-pinned-input').checked = false;
@@ -3913,7 +3977,14 @@ Tips:
       document.querySelectorAll('.color-option').forEach(el => el.classList.remove('selected'));
       document.querySelector('.color-option.yellow').classList.add('selected');
 
+      // Hide delete button for new notes
+      const deleteBtn = document.getElementById('delete-note-btn');
+      if (deleteBtn) deleteBtn.style.display = 'none';
+
+      updateCategorySelection();
+      switchNoteView('edit');
       document.getElementById('note-edit-modal').classList.add('active');
+      setTimeout(setupNoteToolbar, 50);
     }
 
     function editNote(noteId) {
@@ -3922,13 +3993,23 @@ Tips:
 
       currentEditingNote = note;
       currentNoteColor = note.color;
+      currentNoteCategory = note.category || 'notes';
+      noteViewMode = 'edit';
       document.getElementById('note-title-input').value = note.title;
       document.getElementById('note-content-input').value = note.content;
       document.getElementById('note-pinned-input').checked = note.pinned || false;
       document.getElementById('note-created-date').textContent = new Date(note.createdAt).toLocaleString();
       document.getElementById('note-edited-date').textContent = new Date(note.modifiedAt).toLocaleString();
+      
+      // Show delete button for existing notes
+      const deleteBtn = document.getElementById('delete-note-btn');
+      if (deleteBtn) deleteBtn.style.display = 'block';
+
       updateColorSelection();
+      updateCategorySelection();
+      switchNoteView('edit');
       document.getElementById('note-edit-modal').classList.add('active');
+      setTimeout(setupNoteToolbar, 50);
     }
 
     function selectNoteCategory(category) {
@@ -4242,6 +4323,7 @@ Tips:
         currentEditingNote.title = title;
         currentEditingNote.content = content;
         currentEditingNote.color = currentNoteColor;
+        currentEditingNote.category = currentNoteCategory;
         currentEditingNote.pinned = pinned;
         currentEditingNote.modifiedAt = new Date().toISOString();
       } else {
@@ -4250,6 +4332,7 @@ Tips:
           title: title || 'Untitled',
           content: content,
           color: currentNoteColor,
+          category: currentNoteCategory,
           pinned: pinned,
           createdAt: new Date().toISOString(),
           modifiedAt: new Date().toISOString()
