@@ -2980,7 +2980,20 @@ Tips:
       updateThemeIcon(savedTheme);
 
       const savedNotes = localStorage.getItem('notes');
-      if (savedNotes) notes = JSON.parse(savedNotes);
+      if (savedNotes) {
+        try {
+          notes = JSON.parse(savedNotes);
+        } catch (e) {
+          console.error('Failed to parse saved notes', e);
+          notes = [];
+        }
+      }
+      if (typeof renderNotes === 'function') {
+        renderNotes();
+      }
+      if (typeof renderPinnedNotes === 'function') {
+        renderPinnedNotes();
+      }
 
       bindUIEventHandlers();
 
@@ -3008,8 +3021,12 @@ Tips:
         window.addEventListener('online', flushPendingNoteSync);
       }
 
-      renderNotes();
-      renderPinnedNotes();
+      if (typeof renderNotes === 'function') {
+        renderNotes();
+      }
+      if (typeof renderPinnedNotes === 'function') {
+        renderPinnedNotes();
+      }
     }
 
     function saveTasks() {
@@ -3033,7 +3050,11 @@ Tips:
       }
     }
     function saveNotes() {
-      localStorage.setItem('notes', JSON.stringify(notes));
+      try {
+        localStorage.setItem('notes', JSON.stringify(notes));
+      } catch (e) {
+        console.error('Failed to save notes', e);
+      }
     }
 
     function enqueueTaskSync(taskList = tasks) {
