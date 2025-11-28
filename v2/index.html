@@ -2921,10 +2921,41 @@ Tips:
       }
     }
 
+    function bindUIEventHandlers() {
+      const themeToggleBtn = document.getElementById('theme-toggle');
+      if (themeToggleBtn) themeToggleBtn.onclick = () => toggleTheme();
+
+      const statusBtn = document.querySelector('.status-indicator');
+      if (statusBtn) statusBtn.onclick = (e) => toggleStatusDropdown(e);
+
+      const menuBtn = document.querySelector('.menu-dropdown > button');
+      if (menuBtn) menuBtn.onclick = (e) => toggleMenu(e);
+
+      const quickAddInput = document.getElementById('quick-add-input');
+      if (quickAddInput) quickAddInput.onkeypress = (e) => handleQuickAdd(e);
+
+      const authSubmitBtn = document.getElementById('auth-submit-btn');
+      if (authSubmitBtn) authSubmitBtn.onclick = (e) => { e.preventDefault(); submitAuth(); };
+
+      ['auth-email', 'auth-password'].forEach(id => {
+        const field = document.getElementById(id);
+        if (field) {
+          field.onkeypress = (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              submitAuth();
+            }
+          };
+        }
+      });
+    }
+
     async function init() {
       const savedTheme = localStorage.getItem('theme') || 'light';
       document.documentElement.setAttribute('data-theme', savedTheme);
       updateThemeIcon(savedTheme);
+
+      bindUIEventHandlers();
 
       await initSupabaseAuth({
         onSignedIn: async (user) => {
@@ -4912,6 +4943,39 @@ Tips:
     } else {
       init();
     }
+
+    // Expose UI handlers for inline onclicks (module scope would otherwise hide them)
+    Object.assign(window, {
+      toggleTheme,
+      toggleStatusDropdown,
+      toggleMenu,
+      closeMenu,
+      toggleSearch,
+      showAbout,
+      toggleStatsPopup,
+      closeStatsPopup,
+      openNotesModal,
+      closeNotesModal,
+      closeNotesModalOnOverlay,
+      toggleCompletedSection,
+      handleQuickAdd,
+      openAuthModal,
+      closeAuthModal,
+      toggleAuthMode,
+      submitAuth,
+      handleSignOut,
+      openTaskModal,
+      closeTaskModal,
+      closeModalOnOverlay,
+      saveTaskDetails,
+      deleteTaskFromModal,
+      toggleTaskStatus,
+      deleteTask,
+      togglePin,
+      clearCompleted,
+      importData,
+      exportData
+    });
 
     // Add event listeners for floating badges
     document.getElementById('stats-badge').addEventListener('click', toggleStatsPopup);
