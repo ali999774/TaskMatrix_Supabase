@@ -2653,6 +2653,7 @@ Tips:
       workSessionsCompletedInCycle: 0,
       notice: ''
     };
+    let hasLoadedInitialData = false;
 
     async function getCurrentUserId() {
       if (currentUser?.id) return currentUser.id;
@@ -2942,6 +2943,7 @@ Tips:
         currentUser = session.user;
         updateAuthUI();
         await syncFromSupabase();
+        hasLoadedInitialData = true;
       } else {
         resetUserState(); // also renders local data if any
         updateSyncStatus('synced');
@@ -3180,6 +3182,7 @@ Tips:
       } catch (err) {
         console.error('Sign out error:', err);
       }
+      hasLoadedInitialData = false;
       resetUserState();
       authMode = 'signin';
       refreshAuthModeUI();
@@ -4918,9 +4921,8 @@ Tips:
 
     // Auth state change listener (kept for cross-tab/session refresh)
     supabase.auth.onAuthStateChange(async (event, session) => {
-      currentUser = session?.user || null;
-
-      if (!currentUser) {
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        hasLoadedInitialData = false;
         resetUserState();
         authMode = 'signin';
         refreshAuthModeUI();
@@ -4930,13 +4932,15 @@ Tips:
         return;
       }
 
+      currentUser = session.user;
       updateAuthUI();
 
-      // Treat INITIAL_SESSION, SIGNED_IN, and TOKEN_REFRESHED as cues to ensure data is fresh
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      // Load data on all sign-in style events, or if we somehow haven't loaded yet
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || !hasLoadedInitialData) {
         try {
           await flushPendingTaskSync().catch(console.error);
           await syncFromSupabase();
+          hasLoadedInitialData = true;
         } catch (err) {
           console.error('Auth state sync error', err);
         }
