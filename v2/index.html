@@ -3537,6 +3537,12 @@ Tips:
           const mergedData = userDataRow.data || userDataRow.payload || userDataRow.content;
           if (mergedData?.notes && Array.isArray(mergedData.notes) && mergedData.notes.length > 0) {
             notes = mergedData.notes;
+          } else {
+            // Fallback to local notes if cloud has none
+            const localNotes = localStorage.getItem('notes');
+            if (localNotes) {
+              try { notes = JSON.parse(localNotes); } catch (_) { /* ignore */ }
+            }
           }
           // If Supabase has no notes or empty array, keep local notes (they were loaded earlier)
         } else if (userDataError && userDataError.code !== 'PGRST116') {
@@ -3577,12 +3583,13 @@ Tips:
           pendingTaskSyncAfterCurrentSync = false;
           flushPendingTaskSync().catch(console.error);
         }
-        if (pendingNoteSync) {
+        if (pendingNoteSync || pendingNoteSyncQueued) {
           pendingNoteSync = false;
           pendingNoteSyncQueued = false;
           syncUserDataToSupabase().catch(err => {
             console.error(err);
             pendingNoteSyncQueued = true;
+            pendingNoteSync = true;
           });
         }
       }
