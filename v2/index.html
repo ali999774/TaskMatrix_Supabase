@@ -2979,8 +2979,8 @@ Tips:
       document.documentElement.setAttribute('data-theme', savedTheme);
       updateThemeIcon(savedTheme);
 
-      // Load locally saved notes so they appear before/without Supabase fetch
-      loadNotesFromLocalStorage();
+      const savedNotes = localStorage.getItem('notes');
+      if (savedNotes) notes = JSON.parse(savedNotes);
 
       bindUIEventHandlers();
 
@@ -3007,6 +3007,9 @@ Tips:
         window.addEventListener('online', flushPendingTaskSync);
         window.addEventListener('online', flushPendingNoteSync);
       }
+
+      renderNotes();
+      renderPinnedNotes();
     }
 
     function saveTasks() {
@@ -3031,14 +3034,6 @@ Tips:
     }
     function saveNotes() {
       localStorage.setItem('notes', JSON.stringify(notes));
-      if (currentUser) {
-        if (!isSyncing && navigator.onLine) {
-          syncUserDataToSupabase().catch(console.error);
-        } else {
-          pendingNoteSync = true;
-          pendingNoteSyncQueued = true;
-        }
-      }
     }
 
     function enqueueTaskSync(taskList = tasks) {
