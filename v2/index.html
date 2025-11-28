@@ -2929,7 +2929,7 @@ Tips:
         const saved = localStorage.getItem('notes');
         if (saved) {
           const parsedNotes = JSON.parse(saved);
-          if (Array.isArray(parsedNotes) && parsedNotes.length > 0) {
+          if (Array.isArray(parsedNotes)) {
             notes = parsedNotes;
             renderNotes();
             renderPinnedNotes();
