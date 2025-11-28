@@ -2921,6 +2921,19 @@ Tips:
       }
     }
 
+    function loadNotesFromLocalStorage() {
+      try {
+        const saved = localStorage.getItem('notes');
+        if (saved) {
+          notes = JSON.parse(saved);
+          renderNotes();
+          renderPinnedNotes();
+        }
+      } catch (err) {
+        console.error('Failed to load notes from local storage', err);
+      }
+    }
+
     function bindUIEventHandlers() {
       const themeToggleBtn = document.getElementById('theme-toggle');
       if (themeToggleBtn) themeToggleBtn.onclick = () => toggleTheme();
@@ -2954,6 +2967,9 @@ Tips:
       const savedTheme = localStorage.getItem('theme') || 'light';
       document.documentElement.setAttribute('data-theme', savedTheme);
       updateThemeIcon(savedTheme);
+
+      // Load locally saved notes so they appear before/without Supabase fetch
+      loadNotesFromLocalStorage();
 
       bindUIEventHandlers();
 
