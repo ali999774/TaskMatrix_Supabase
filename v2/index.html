@@ -2653,6 +2653,8 @@ Tips:
       notice: ''
     };
     let hasLoadedInitialData = false;
+    let pendingNoteSync = false;
+    let pendingTaskSyncAfterCurrentSync = false;
 
     function toggleTheme() {
       const html = document.documentElement;
@@ -2999,13 +3001,14 @@ Tips:
 
     function saveTasks() {
       localStorage.setItem('tasks', JSON.stringify(tasks));
-      if (currentUser && !isSyncing) {
-        if (navigator.onLine) {
+      if (currentUser) {
+        if (navigator.onLine && !isSyncing) {
           pendingTaskSyncQueue = [];
           syncTasksToSupabase().catch(console.error);
           syncUserDataToSupabase().catch(console.error);
         } else {
           enqueueTaskSync(tasks);
+          pendingTaskSyncAfterCurrentSync = true;
         }
       }
     }
@@ -3018,8 +3021,12 @@ Tips:
     }
     function saveNotes() {
       localStorage.setItem('notes', JSON.stringify(notes));
-      if (currentUser && !isSyncing) {
-        syncUserDataToSupabase().catch(console.error);
+      if (currentUser) {
+        if (!isSyncing) {
+          syncUserDataToSupabase().catch(console.error);
+        } else {
+          pendingNoteSync = true;
+        }
       }
     }
 
@@ -3542,6 +3549,14 @@ Tips:
         updateSyncStatus('error', error.message || 'Failed to load tasks');
       } finally {
         isSyncing = false;
+        if (pendingTaskSyncAfterCurrentSync && pendingTaskSyncQueue.length && navigator.onLine) {
+          pendingTaskSyncAfterCurrentSync = false;
+          flushPendingTaskSync().catch(console.error);
+        }
+        if (pendingNoteSync) {
+          pendingNoteSync = false;
+          syncUserDataToSupabase().catch(console.error);
+        }
       }
     }
 
