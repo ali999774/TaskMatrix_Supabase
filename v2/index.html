@@ -2928,9 +2928,12 @@ Tips:
       try {
         const saved = localStorage.getItem('notes');
         if (saved) {
-          notes = JSON.parse(saved);
-          renderNotes();
-          renderPinnedNotes();
+          const parsedNotes = JSON.parse(saved);
+          if (Array.isArray(parsedNotes) && parsedNotes.length > 0) {
+            notes = parsedNotes;
+            renderNotes();
+            renderPinnedNotes();
+          }
         }
       } catch (err) {
         console.error('Failed to load notes from local storage', err);
@@ -3532,12 +3535,14 @@ Tips:
           .maybeSingle();
         if (!userDataError && userDataRow) {
           const mergedData = userDataRow.data || userDataRow.payload || userDataRow.content;
-          if (mergedData?.notes) {
+          if (mergedData?.notes && Array.isArray(mergedData.notes) && mergedData.notes.length > 0) {
             notes = mergedData.notes;
           }
+          // If Supabase has no notes or empty array, keep local notes (they were loaded earlier)
         } else if (userDataError && userDataError.code !== 'PGRST116') {
           console.error('user_data fetch error:', userDataError);
         }
+        // If no userDataRow found, keep local notes (they were loaded earlier)
 
         saveTasks();
         saveStats();
@@ -5064,7 +5069,12 @@ Tips:
       toggleSortDropdown,
       setSortMode,
       applyFilters,
-      clearFilters
+      clearFilters,
+      // Pomodoro
+      openPomodoroModal,
+      closePomodoroModal,
+      openPomodoroSettings,
+      closePomodoroSettings
     });
 
     // Add event listeners for floating badges
