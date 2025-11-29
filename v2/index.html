@@ -3528,6 +3528,90 @@ Tips:
       }
     }
 
+    // Debug helper: Reset all notes for current user (Supabase + localStorage)
+    async function resetAllNotesForCurrentUser() {
+      // Ensure user is logged in
+      const userId = await getCurrentUserId();
+      if (!userId || !currentUser) {
+        console.warn('No authenticated user; cannot reset notes');
+        return;
+      }
+
+      try {
+        // Fetch current user_data row
+        const { data: userDataRow, error: fetchError } = await supabase
+          .from('user_data')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (fetchError && fetchError.code !== 'PGRST116') {
+          console.error('Error fetching user_data:', fetchError);
+          return;
+        }
+
+        // Get existing data (handle different field names)
+        const existingData = userDataRow
+          ? (userDataRow.data || userDataRow.payload || userDataRow.content || {})
+          : {};
+
+        // Build new data object preserving everything except notes
+        const newData = { ...existingData };
+        newData.notes = [];
+        if ('notes_updated_at' in newData) {
+          newData.notes_updated_at = null;
+        }
+
+        // Update Supabase row
+        const updatePayload = {
+          user_id: userId,
+          data: newData
+        };
+
+        const { error: updateError } = await supabase
+          .from('user_data')
+          .upsert(updatePayload, { onConflict: 'user_id' });
+
+        if (updateError) {
+          // Try fallback payload structure if needed
+          if (updateError.message && updateError.message.toLowerCase().includes('data')) {
+            const { error: fallbackError } = await supabase
+              .from('user_data')
+              .upsert({ user_id: userId, payload: newData }, { onConflict: 'user_id' });
+            if (fallbackError) {
+              console.error('Error updating user_data (fallback):', fallbackError);
+              return;
+            }
+          } else {
+            console.error('Error updating user_data:', updateError);
+            return;
+          }
+        }
+
+        // Clear localStorage notes
+        localStorage.removeItem('notes');
+        localStorage.removeItem('notes_meta');
+
+        // Reset in-memory notes array
+        notes = [];
+
+        // Re-render notes UI
+        if (typeof renderNotes === 'function') {
+          renderNotes();
+        }
+        if (typeof renderPinnedNotes === 'function') {
+          renderPinnedNotes();
+        }
+
+        console.log('[resetAllNotesForCurrentUser] Notes cleared in Supabase and localStorage for current user');
+      } catch (err) {
+        console.error('Error in resetAllNotesForCurrentUser:', err);
+      }
+    }
+
+    // Expose reset function to window for DevTools access
+    window.resetAllNotesForCurrentUser = resetAllNotesForCurrentUser;
+
     // restoreSession is now handled in init() - keeping for backward compatibility if called elsewhere
     async function restoreSession() {
       try {
