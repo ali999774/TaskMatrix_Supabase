@@ -3057,6 +3057,39 @@ Tips:
       }
     }
 
+    // --- Notes timestamp helpers for cross-device sync ---
+    function getLocalNotesTimestamp() {
+      try {
+        const ts = localStorage.getItem('notes_updated_at');
+        return ts ? parseInt(ts, 10) : 0;
+      } catch (e) {
+        return 0;
+      }
+    }
+
+    function setLocalNotesTimestamp(ts) {
+      try {
+        localStorage.setItem('notes_updated_at', String(ts));
+      } catch (e) {
+        console.error('Failed to save notes timestamp', e);
+      }
+    }
+
+    function touchLocalNotesTimestamp() {
+      setLocalNotesTimestamp(Date.now());
+    }
+
+    function saveNotesAndSync() {
+      // Update timestamp, save to localStorage, and push to Supabase
+      touchLocalNotesTimestamp();
+      saveNotes();
+      if (currentUser && navigator.onLine && !isSyncing) {
+        syncUserDataToSupabase().catch(console.error);
+      } else if (currentUser) {
+        pendingNoteSyncQueued = true;
+      }
+    }
+
     function enqueueTaskSync(taskList = tasks) {
       if (!currentUser) return;
       const userId = currentUser.id;
@@ -3451,15 +3484,23 @@ Tips:
     async function syncUserDataToSupabase() {
       if (!currentUser) return;
       try {
+        // Get or create notes timestamp for cloud sync
+        let notesUpdatedAt = getLocalNotesTimestamp();
+        if (!notesUpdatedAt) {
+          notesUpdatedAt = Date.now();
+          setLocalNotesTimestamp(notesUpdatedAt);
+        }
+
         const payload = {
           user_id: currentUser.id,
-          data: { tasks, userStats, notes }
+          data: { tasks, userStats, notes, notes_updated_at: notesUpdatedAt }
         };
         await supabase.from('user_data').upsert(payload, { onConflict: 'user_id' });
       } catch (err) {
         if (err?.message && err.message.toLowerCase().includes('data')) {
           try {
-            await supabase.from('user_data').upsert({ user_id: currentUser.id, payload: { tasks, userStats, notes } }, { onConflict: 'user_id' });
+            const notesUpdatedAt = getLocalNotesTimestamp() || Date.now();
+            await supabase.from('user_data').upsert({ user_id: currentUser.id, payload: { tasks, userStats, notes, notes_updated_at: notesUpdatedAt } }, { onConflict: 'user_id' });
           } catch (fallbackErr) {
             console.error('user_data sync error', fallbackErr);
           }
@@ -3555,8 +3596,8 @@ Tips:
           .eq('user_id', userId)
           .maybeSingle();
         
-        // --- Notes: localStorage is source of truth ---
-        // 1) Read notes from localStorage first
+        // --- Notes: last-writer-wins sync with timestamps ---
+        // 1) Read notes from localStorage
         const localNotesRaw = localStorage.getItem('notes');
         let localNotes = null;
         try {
@@ -3571,29 +3612,48 @@ Tips:
           localNotes = null;
         }
 
-        // 2) Read notes from Supabase row, if present
+        // 2) Read local timestamp
+        const localNotesUpdatedAt = getLocalNotesTimestamp();
+
+        // 3) Read notes and timestamp from Supabase row, if present
         const mergedData = (!userDataError && userDataRow)
           ? (userDataRow.data || userDataRow.payload || userDataRow.content)
           : null;
         const supabaseNotes = Array.isArray(mergedData?.notes)
           ? mergedData.notes
           : [];
+        const supabaseNotesUpdatedAt = typeof mergedData?.notes_updated_at === 'number'
+          ? mergedData.notes_updated_at
+          : 0;
 
-        // 3) Decide which to use:
-        // - If localNotes is NOT null -> use localNotes (even if it's [])
-        // - If localNotes is null (no key or parse failure) and Supabase has notes -> seed from Supabase
-        // - Otherwise default to []
+        // 4) Decide which notes to use (last-writer-wins)
         let effectiveNotes;
-        if (localNotes !== null) {
-          effectiveNotes = localNotes;          // local is source of truth
-        } else if (supabaseNotes.length > 0) {
-          effectiveNotes = supabaseNotes;       // one-time seed from Supabase
+        let shouldUpdateLocalTimestamp = false;
+
+        if (localNotes === null) {
+          // No local notes key at all (first run on device) → seed from Supabase if available
+          if (supabaseNotes.length > 0) {
+            effectiveNotes = supabaseNotes;
+            shouldUpdateLocalTimestamp = true;
+          } else {
+            effectiveNotes = [];
+          }
+        } else if (supabaseNotesUpdatedAt > localNotesUpdatedAt) {
+          // Supabase is strictly newer → use Supabase notes
+          effectiveNotes = supabaseNotes;
+          shouldUpdateLocalTimestamp = true;
         } else {
-          effectiveNotes = [];
+          // Local is newer or same → keep local notes (even if [])
+          effectiveNotes = localNotes;
         }
 
-        // 4) Assign to the global notes array
+        // 5) Assign to global notes array
         notes = effectiveNotes;
+
+        // 6) Update local timestamp if we pulled from Supabase
+        if (shouldUpdateLocalTimestamp && supabaseNotesUpdatedAt > 0) {
+          setLocalNotesTimestamp(supabaseNotesUpdatedAt);
+        }
 
         saveTasks();
         saveStats();
@@ -3806,7 +3866,7 @@ Tips:
     function deleteNoteFromCard(noteId) {
       if (confirm('Delete this note?')) {
         notes = notes.filter(n => n.id !== noteId);
-        saveNotes();
+        saveNotesAndSync();
         renderNotes();
         renderPinnedNotes();
       }
@@ -4361,7 +4421,7 @@ Tips:
         notes.unshift(newNote);
       }
 
-      saveNotes();
+      saveNotesAndSync();
       renderNotes();
       renderPinnedNotes();
       closeNoteEditModal();
@@ -4371,7 +4431,7 @@ Tips:
       if (!currentEditingNote) return;
       if (confirm('Delete this note?')) {
         notes = notes.filter(n => n.id !== currentEditingNote.id);
-        saveNotes();
+        saveNotesAndSync();
         renderNotes();
         renderPinnedNotes();
         closeNoteEditModal();
