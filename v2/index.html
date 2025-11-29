@@ -2980,7 +2980,20 @@ Tips:
       updateThemeIcon(savedTheme);
 
       const savedNotes = localStorage.getItem('notes');
-      if (savedNotes) notes = JSON.parse(savedNotes);
+      if (savedNotes) {
+        try {
+          notes = JSON.parse(savedNotes);
+        } catch (e) {
+          console.error('Failed to parse saved notes', e);
+          notes = [];
+        }
+      }
+      if (typeof renderNotes === 'function') {
+        renderNotes();
+      }
+      if (typeof renderPinnedNotes === 'function') {
+        renderPinnedNotes();
+      }
 
       bindUIEventHandlers();
 
@@ -3008,8 +3021,12 @@ Tips:
         window.addEventListener('online', flushPendingNoteSync);
       }
 
-      renderNotes();
-      renderPinnedNotes();
+      if (typeof renderNotes === 'function') {
+        renderNotes();
+      }
+      if (typeof renderPinnedNotes === 'function') {
+        renderPinnedNotes();
+      }
     }
 
     function saveTasks() {
@@ -3033,7 +3050,11 @@ Tips:
       }
     }
     function saveNotes() {
-      localStorage.setItem('notes', JSON.stringify(notes));
+      try {
+        localStorage.setItem('notes', JSON.stringify(notes));
+      } catch (e) {
+        console.error('Failed to save notes', e);
+      }
     }
 
     function enqueueTaskSync(taskList = tasks) {
@@ -3534,24 +3555,39 @@ Tips:
           .eq('user_id', userId)
           .maybeSingle();
         
-        // Preserve local notes before checking Supabase
-        const localNotesBackup = [...notes];
-        
+        // Build local notes: prefer in-memory, then localStorage, then empty
+        let localNotes = Array.isArray(notes) && notes.length > 0 ? [...notes] : [];
+
+        if (localNotes.length === 0) {
+          const stored = localStorage.getItem('notes');
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                localNotes = parsed;
+              }
+            } catch (e) {
+              console.error('Failed to parse localStorage notes', e);
+            }
+          }
+        }
+
         if (!userDataError && userDataRow) {
           const mergedData = userDataRow.data || userDataRow.payload || userDataRow.content;
-          if (mergedData?.notes && Array.isArray(mergedData.notes) && mergedData.notes.length > 0) {
-            // Supabase has notes - use them
+
+          if (localNotes.length > 0) {
+            // Local notes win - ignore Supabase notes
+            notes = localNotes;
+          } else if (mergedData?.notes && Array.isArray(mergedData.notes) && mergedData.notes.length > 0) {
+            // Only if we have no local notes, fall back to Supabase notes
             notes = mergedData.notes;
           } else {
-            // Supabase has no notes or empty array - keep local notes
-            notes = localNotesBackup.length > 0 ? localNotesBackup : notes;
+            notes = [];
           }
-        } else if (userDataError && userDataError.code !== 'PGRST116') {
-          console.error('user_data fetch error:', userDataError);
-          // On error, keep local notes
-          notes = localNotesBackup.length > 0 ? localNotesBackup : notes;
+        } else {
+          // If there was an error or no row, just keep local notes if any
+          notes = localNotes.length > 0 ? localNotes : [];
         }
-        // If no userDataRow found, keep local notes (already loaded)
 
         saveTasks();
         saveStats();
