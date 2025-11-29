@@ -3555,39 +3555,45 @@ Tips:
           .eq('user_id', userId)
           .maybeSingle();
         
-        // Build local notes: prefer in-memory, then localStorage, then empty
-        let localNotes = Array.isArray(notes) && notes.length > 0 ? [...notes] : [];
-
-        if (localNotes.length === 0) {
-          const stored = localStorage.getItem('notes');
-          if (stored) {
-            try {
-              const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                localNotes = parsed;
-              }
-            } catch (e) {
-              console.error('Failed to parse localStorage notes', e);
+        // --- Notes: localStorage is source of truth ---
+        // 1) Read notes from localStorage first
+        const localNotesRaw = localStorage.getItem('notes');
+        let localNotes = null;
+        try {
+          if (localNotesRaw != null) {
+            const parsed = JSON.parse(localNotesRaw);
+            if (Array.isArray(parsed)) {
+              localNotes = parsed; // even [] is valid
             }
           }
+        } catch (e) {
+          // If parse fails, treat as "no usable local notes"
+          localNotes = null;
         }
 
-        if (!userDataError && userDataRow) {
-          const mergedData = userDataRow.data || userDataRow.payload || userDataRow.content;
+        // 2) Read notes from Supabase row, if present
+        const mergedData = (!userDataError && userDataRow)
+          ? (userDataRow.data || userDataRow.payload || userDataRow.content)
+          : null;
+        const supabaseNotes = Array.isArray(mergedData?.notes)
+          ? mergedData.notes
+          : [];
 
-          if (localNotes.length > 0) {
-            // Local notes win - ignore Supabase notes
-            notes = localNotes;
-          } else if (mergedData?.notes && Array.isArray(mergedData.notes) && mergedData.notes.length > 0) {
-            // Only if we have no local notes, fall back to Supabase notes
-            notes = mergedData.notes;
-          } else {
-            notes = [];
-          }
+        // 3) Decide which to use:
+        // - If localNotes is NOT null -> use localNotes (even if it's [])
+        // - If localNotes is null (no key or parse failure) and Supabase has notes -> seed from Supabase
+        // - Otherwise default to []
+        let effectiveNotes;
+        if (localNotes !== null) {
+          effectiveNotes = localNotes;          // local is source of truth
+        } else if (supabaseNotes.length > 0) {
+          effectiveNotes = supabaseNotes;       // one-time seed from Supabase
         } else {
-          // If there was an error or no row, just keep local notes if any
-          notes = localNotes.length > 0 ? localNotes : [];
+          effectiveNotes = [];
         }
+
+        // 4) Assign to the global notes array
+        notes = effectiveNotes;
 
         saveTasks();
         saveStats();
