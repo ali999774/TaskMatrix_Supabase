@@ -3052,8 +3052,10 @@ Tips:
     function saveNotes() {
       try {
         localStorage.setItem('notes', JSON.stringify(notes));
+        const meta = { updatedAt: Date.now() };
+        localStorage.setItem('notes_meta', JSON.stringify(meta));
       } catch (e) {
-        console.error('Failed to save notes', e);
+        console.error('Failed to save notes to localStorage', e);
       }
     }
 
@@ -3082,10 +3084,8 @@ Tips:
     }
 
     function saveNotesAndSync() {
-      // Save notes and meta, then sync to Supabase
-      const now = Date.now();
+      // Save notes (which now includes meta), then sync to Supabase
       saveNotes();
-      setLocalNotesMeta(now);
       if (currentUser && navigator.onLine && !isSyncing) {
         syncUserDataToSupabase().catch(console.error);
       }
@@ -3494,17 +3494,38 @@ Tips:
 
     async function syncUserDataToSupabase() {
       if (!currentUser) return;
+      
+      // Load local notes timestamp
+      let notesUpdatedAt = null;
       try {
-        // Notes are local-only - never write them to Supabase
+        const metaRaw = localStorage.getItem('notes_meta');
+        if (metaRaw) {
+          const meta = JSON.parse(metaRaw);
+          if (meta && typeof meta.updatedAt === 'number') {
+            notesUpdatedAt = meta.updatedAt;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to read notes_meta from localStorage', e);
+      }
+
+      const dataPayload = {
+        tasks,
+        userStats,
+        notes,
+        notes_updated_at: notesUpdatedAt
+      };
+
+      try {
         const payload = {
           user_id: currentUser.id,
-          data: { tasks, userStats }
+          data: dataPayload
         };
         await supabase.from('user_data').upsert(payload, { onConflict: 'user_id' });
       } catch (err) {
         if (err?.message && err.message.toLowerCase().includes('data')) {
           try {
-            await supabase.from('user_data').upsert({ user_id: currentUser.id, payload: { tasks, userStats } }, { onConflict: 'user_id' });
+            await supabase.from('user_data').upsert({ user_id: currentUser.id, payload: dataPayload }, { onConflict: 'user_id' });
           } catch (fallbackErr) {
             console.error('user_data sync error', fallbackErr);
           }
@@ -3678,29 +3699,102 @@ Tips:
           if (newStats) userStats.id = newStats.id;
         }
 
-        // --- Notes: localStorage only, completely independent of Supabase ---
-        // Read notes from localStorage only, never from Supabase
-        const localNotesRaw = localStorage.getItem('notes');
-        let localNotes = [];
+        // --- Notes: cross-device sync with last-writer-wins ---
+        // 1) Load local notes + localUpdatedAt
+        let localNotes = null;
+        let localUpdatedAt = null;
 
         try {
-          if (localNotesRaw != null) {
-            const parsed = JSON.parse(localNotesRaw);
+          const stored = localStorage.getItem('notes');
+          if (stored) {
+            const parsed = JSON.parse(stored);
             if (Array.isArray(parsed)) {
-              localNotes = parsed; // even [] is valid
+              localNotes = parsed;
             }
           }
         } catch (e) {
-          console.error('Failed to parse saved notes', e);
-          localNotes = [];
+          console.error('Failed to parse localStorage notes', e);
         }
 
-        // Assign local notes - completely ignore Supabase
-        notes = localNotes;
+        try {
+          const metaRaw = localStorage.getItem('notes_meta');
+          if (metaRaw) {
+            const meta = JSON.parse(metaRaw);
+            if (meta && typeof meta.updatedAt === 'number') {
+              localUpdatedAt = meta.updatedAt;
+            }
+          }
+        } catch (e) {
+          console.error('Failed to parse notes_meta from localStorage', e);
+        }
+
+        // 2) Fetch Supabase row (already fetched for tasks/stats, but we need user_data for notes)
+        const { data: userDataRow, error: userDataError } = await supabase
+          .from('user_data')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        // 3) Extract Supabase notes and timestamp
+        const mergedData = (!userDataError && userDataRow)
+          ? (userDataRow.data || userDataRow.payload || userDataRow.content || {})
+          : {};
+        const supabaseNotes = Array.isArray(mergedData.notes) ? mergedData.notes : null;
+        const supabaseUpdatedAt = typeof mergedData.notes_updated_at === 'number' ? mergedData.notes_updated_at : null;
+
+        // 4) Apply last-writer-wins
+        let effectiveNotes = null;
+        const hasLocal = localNotes !== null;
+        const hasSupabase = supabaseNotes !== null;
+        
+        // Normalize timestamps (treat missing as 0)
+        const localTime = typeof localUpdatedAt === 'number' ? localUpdatedAt : 0;
+        const supabaseTime = typeof supabaseUpdatedAt === 'number' ? supabaseUpdatedAt : 0;
+
+        if (!hasLocal && !hasSupabase) {
+          // Neither has notes
+          effectiveNotes = [];
+        } else if (hasLocal && !hasSupabase) {
+          // Only local has notes
+          effectiveNotes = localNotes;
+        } else if (!hasLocal && hasSupabase) {
+          // Only Supabase has notes
+          effectiveNotes = supabaseNotes;
+        } else {
+          // Both have notes (maybe empty arrays) - compare timestamps
+          if (supabaseTime > localTime) {
+            // Supabase is newer
+            effectiveNotes = supabaseNotes;
+          } else {
+            // Local is newer or equal - local wins (even if empty array)
+            effectiveNotes = localNotes;
+          }
+        }
+
+        // Ensure we have a valid array
+        if (!Array.isArray(effectiveNotes)) {
+          effectiveNotes = [];
+        }
+
+        notes = effectiveNotes;
 
         saveTasks();
         saveStats();
-        saveNotes();
+        
+        // Save notes to localStorage and update timestamp
+        // If Supabase won, preserve its timestamp; otherwise saveNotes() will set current time
+        if (hasSupabase && supabaseTime > localTime && supabaseUpdatedAt !== null) {
+          // Supabase won - preserve its timestamp
+          try {
+            localStorage.setItem('notes', JSON.stringify(notes));
+            setLocalNotesMeta(supabaseUpdatedAt);
+          } catch (e) {
+            console.error('Failed to save notes to localStorage', e);
+          }
+        } else {
+          // Local won or no timestamp - use saveNotes which sets current timestamp
+          saveNotes();
+        }
         updateStatsDisplay();
         renderNotes();
         renderPinnedNotes();
