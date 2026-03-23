@@ -1,4 +1,10 @@
 ---
+## Status: LIVE ✅
+Live URL: https://ali999774.github.io/TaskMatrix_Supabase
+Last deployed: 2026-03-22
+Phase 1 (Supabase sync): Complete
+Phase 2 (UX improvements): Complete
+---
 # TaskMatrix — Project Context
 ## Project
 Personal Eisenhower Matrix task manager, single HTML file.
@@ -37,6 +43,12 @@ Final file renamed to index.html and pushed to GitHub Pages
 - SUPABASE-MIGRATION.sql — already run, kept for reference
 - RUN-ORDER.md — build sequencing guide
 - PROJECT-CONTEXT.md — this file
+## Tool Division of Labor (learned from build)
+- Browser extension → diagnose only: read console errors, fill forms,
+  navigate dashboards, check deployment status. NEVER edit source files.
+- Antigravity → all code fixes and feature work
+- Cowork → file operations, updating docs, git commits
+- Terminal → git push (requires local credentials)
 ## Credentials (local only — do not commit)
 - Supabase DB Password: KbFMGWoeo3lSVp5Y
 ---

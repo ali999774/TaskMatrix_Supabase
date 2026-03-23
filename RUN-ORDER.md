@@ -59,16 +59,24 @@ Repo → Settings → Pages → Source: Deploy from branch → main → / (root)
 ## STATUS
 | Step | Owner | Status |
 |------|-------|--------|
-| Supabase project created | Ali | ⬜ |
-| SQL migration run | Ali | ⬜ |
-| Google OAuth configured | Ali | ⬜ |
-| Auth URLs configured | Ali | ⬜ |
-| Marcus — Taskmatrix-v2.html | Marcus | ⬜ |
-| Jordan — Taskmatrix-v3.html | Jordan | ⬜ |
-| Supabase keys added to file | Ali | ⬜ |
-| Deployed to GitHub Pages | Ali | ⬜ |
-| Tested on 2 devices | Ali | ⬜ |
-| Audit passed | Ali | ⬜ |
+| Supabase project created | Ali | ✅ |
+| SQL migration run | Ali | ✅ |
+| Google OAuth configured | Ali | ✅ |
+| Auth URLs configured | Ali | ✅ |
+| Marcus — Taskmatrix-v2.html | Marcus | ✅ |
+| Jordan — Taskmatrix-v3.html | Jordan | ✅ |
+| Supabase keys added to file | Ali | ✅ |
+| Deployed to GitHub Pages | Ali | ✅ |
+| Tested on 2 devices | Ali | ✅ |
+| Audit passed | Ali | ✅ |
+---
+## Lessons Learned
+## Tool Division of Labor (learned from build)
+- Browser extension → diagnose only: read console errors, fill forms,
+  navigate dashboards, check deployment status. NEVER edit source files.
+- Antigravity → all code fixes and feature work
+- Cowork → file operations, updating docs, git commits
+- Terminal → git push (requires local credentials)
 ---
 ## Phase 2 Backlog (after Phase 1 stable)
 | Feature | Agent | Notes |
