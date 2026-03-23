@@ -2184,49 +2184,83 @@
 
     // ── Supabase data operations ─────────────────────────────────
     async function saveTasks() {
-      if (!currentUser) return;
+      if (!currentUser) {
+        console.warn('[saveTasks] No currentUser — skipping save');
+        return;
+      }
       setSyncState('syncing');
+      console.log('[saveTasks] START — user:', currentUser.id, '| tasks:', tasks.length);
       try {
-        const rows = tasks.map(t => ({
-          id: t.supabaseId || undefined,
-          user_id: currentUser.id,
-          title: t.title,
-          notes: t.notes || '',
-          category: t.category || 'Personal',
-          importance: t.importance,
-          urgency: t.urgency,
-          status: t.status,
-          due_date: t.dueDate || null,
-          due_time: t.dueTime || null,
-          estimated_duration: t.estimatedDuration || null,
-          recurring: t.recurring || false,
-          recur_frequency: t.recurFrequency || null,
-          recur_interval: t.recurInterval || 1,
-          recur_days: t.recurDays || [],
-          tags: t.tags || [],
-          subtasks: t.subtasks || [],
-          pinned: t.pinned || false,
-          created_at: t.createdAt,
-          updated_at: new Date().toISOString()
-        }));
-
+        // ── Step 1: delete all rows for this user ─────────────────
+        console.log('[saveTasks] Deleting existing rows…');
         const { error: deleteError } = await supabaseClient
           .from('tasks')
           .delete()
           .eq('user_id', currentUser.id);
-        if (deleteError) throw deleteError;
-
-        if (rows.length > 0) {
-          const { data, error } = await supabaseClient.from('tasks').insert(rows).select();
-          if (error) throw error;
-          data.forEach((row, i) => { if (tasks[i]) tasks[i].supabaseId = row.id; });
+        if (deleteError) {
+          console.error('[saveTasks] DELETE failed:', deleteError);
+          throw deleteError;
         }
+        console.log('[saveTasks] DELETE ok');
+
+        // ── Step 2: insert fresh rows (no id / created_at / updated_at) ──
+        if (tasks.length > 0) {
+          const rows = tasks.map(t => ({
+            // Never pass `id` — let Supabase generate a fresh UUID
+            user_id:            currentUser.id,
+            title:              t.title,
+            notes:              t.notes              || '',
+            category:           t.category           || 'personal',
+            importance:         t.importance,
+            urgency:            t.urgency,
+            status:             t.status,
+            due_date:           t.dueDate            || null,
+            due_time:           t.dueTime            || null,
+            estimated_duration: t.estimatedDuration  || null,
+            recurring:          t.recurring          || false,
+            recur_frequency:    t.recurFrequency     || null,
+            recur_interval:     t.recurInterval      || 1,
+            recur_days:         t.recurDays          || [],
+            tags:               t.tags               || [],
+            subtasks:           t.subtasks           || [],
+            pinned:             t.pinned             || false,
+            // created_at / updated_at: let column defaults + trigger handle these
+          }));
+          console.log('[saveTasks] Inserting', rows.length, 'row(s)…');
+          console.log('[saveTasks] Row sample:', JSON.stringify(rows[0]));
+
+          const { data, error: insertError } = await supabaseClient
+            .from('tasks')
+            .insert(rows)
+            .select();
+          if (insertError) {
+            console.error('[saveTasks] INSERT failed:', insertError);
+            throw insertError;
+          }
+          // Assign the new Supabase UUIDs back to local task objects
+          if (data) {
+            data.forEach((row, i) => { if (tasks[i]) tasks[i].supabaseId = row.id; });
+          }
+          console.log('[saveTasks] INSERT ok — got', data?.length, 'rows back');
+        }
+
         setSyncState('synced');
+        console.log('[saveTasks] DONE — synced');
       } catch (err) {
-        console.error('Save error:', err);
+        console.error('[saveTasks] FAILED:', err?.message || err, err);
         setSyncState('error');
+        // Surface the error visibly so it's readable without DevTools
+        const prev = document.getElementById('_save_err');
+        if (prev) prev.remove();
+        const banner = document.createElement('div');
+        banner.id = '_save_err';
+        banner.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;padding:10px 20px;border-radius:8px;font-size:13px;z-index:9999;max-width:90vw;cursor:pointer;';
+        banner.textContent = '⚠ Save failed: ' + (err?.message || JSON.stringify(err)) + ' — click to dismiss';
+        banner.onclick = () => banner.remove();
+        document.body.appendChild(banner);
       }
     }
+
 
     async function loadTasksFromSupabase() {
       if (!currentUser) return;
