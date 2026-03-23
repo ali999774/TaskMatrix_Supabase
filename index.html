@@ -7,7 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TaskMatrix</title>
   <style>
-    :root {
+    :root 
       /* Base Colors */
       --bg-body: linear-gradient(135deg, #f8fafc, #dbeafe);
       --bg-card: #ffffff;
@@ -2210,7 +2210,7 @@
           updated_at: new Date().toISOString()
         }));
 
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await supabaseClient
           .from('tasks')
           .delete()
           .eq('user_id', currentUser.id);
@@ -2232,7 +2232,7 @@
       if (!currentUser) return;
       setSyncState('syncing');
       try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('tasks')
           .select('*')
           .eq('user_id', currentUser.id)
@@ -2297,7 +2297,7 @@
     async function loadNotesFromSupabase() {
       if (!currentUser) return;
       try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('sticky_notes')
           .select('*')
           .eq('user_id', currentUser.id);
