@@ -2108,7 +2108,7 @@
     // TODO: Replace with your actual Supabase project credentials
     const SUPABASE_URL = 'https://xulnxwwwjpvgsaqnsllo.supabase.co'
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1bG54d3d3anB2Z3NhcW5zbGxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMTQwMzYsImV4cCI6MjA4OTc5MDAzNn0.lWoihSm-kv_Ep5fXQZ55H4YU5wXmmKvK4LVLSBIVYic'
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
     let currentUser = null  // set after auth
 
@@ -2148,7 +2148,7 @@
 
     // ── Auth helpers ─────────────────────────────────────────────
     async function signInWithGoogle() {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { error } = await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: window.location.href }
       });
@@ -2156,7 +2156,7 @@
     }
 
     async function signOut() {
-      await supabase.auth.signOut();
+      await supabaseClient.auth.signOut();
       currentUser = null;
       tasks = [];
       notes = [];
@@ -2217,7 +2217,7 @@
         if (deleteError) throw deleteError;
 
         if (rows.length > 0) {
-          const { data, error } = await supabase.from('tasks').insert(rows).select();
+          const { data, error } = await supabaseClient.from('tasks').insert(rows).select();
           if (error) throw error;
           data.forEach((row, i) => { if (tasks[i]) tasks[i].supabaseId = row.id; });
         }
@@ -2271,7 +2271,7 @@
       if (!currentUser) return;
       setSyncState('syncing');
       try {
-        await supabase.from('sticky_notes').delete().eq('user_id', currentUser.id);
+        await supabaseClient.from('sticky_notes').delete().eq('user_id', currentUser.id);
         if (notesArray.length > 0) {
           const rows = notesArray.map(n => ({
             user_id: currentUser.id,
@@ -2284,7 +2284,7 @@
             created_at: n.createdAt || new Date().toISOString(),
             updated_at: new Date().toISOString()
           }));
-          const { error } = await supabase.from('sticky_notes').insert(rows);
+          const { error } = await supabaseClient.from('sticky_notes').insert(rows);
           if (error) throw error;
         }
         setSyncState('synced');
@@ -2385,7 +2385,7 @@
       showAuthScreen();
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await supabaseClient.auth.getSession();
         if (session) {
           currentUser = session.user;
           hideAuthScreen();
@@ -2404,7 +2404,7 @@
         setSyncState('error');
       }
 
-      supabase.auth.onAuthStateChange(async (event, session) => {
+      supabaseClient.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session) {
           currentUser = session.user;
           hideAuthScreen();
