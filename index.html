@@ -2239,7 +2239,7 @@
           .order('created_at', { ascending: true });
         if (error) throw error;
         tasks = data.map(row => ({
-          id: Date.now() + Math.random(),
+          id: Date.now() + Math.floor(Math.random() * 1000),
           supabaseId: row.id,
           title: row.title,
           notes: row.notes,
@@ -2279,8 +2279,6 @@
             color: n.color || 'yellow',
             position_x: n.x || 0,
             position_y: n.y || 0,
-            title: n.title || '',
-            pinned: n.pinned || false,
             created_at: n.createdAt || new Date().toISOString(),
             updated_at: new Date().toISOString()
           }));
