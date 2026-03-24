@@ -3,7 +3,7 @@
 
 <head>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dexie@4/dist/dexie.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TaskMatrix</title>
@@ -2177,11 +2177,19 @@
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
     // ── Fix 4: Dexie.js write-through local cache ─────────────────
-    const db = new Dexie('taskmatrix')
-    db.version(1).stores({
-      tasks: 'localId, supabaseId, updatedAt, pendingSync',
-      notes: 'localId, supabaseId, updatedAt, pendingSync'
-    })
+    // Wrapped in try/catch — if Dexie CDN failed to load or IndexedDB is
+    // unavailable (private browsing), the app still works; cache ops become no-ops.
+    let db = null
+    try {
+      db = new Dexie('taskmatrix')
+      db.version(1).stores({
+        tasks: 'localId, supabaseId, updatedAt, pendingSync',
+        notes: 'localId, supabaseId, updatedAt, pendingSync'
+      })
+    } catch (dexieInitErr) {
+      console.warn('[Dexie] init failed — offline cache disabled:', dexieInitErr)
+      db = null
+    }
 
     let currentUser = null  // set after auth
 
@@ -3487,9 +3495,12 @@
             return `<div class="task ${task.category} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()">
               <div class="task-content">
                 <button class="icon-btn" onclick="event.stopPropagation(); toggleTaskStatus(${task.id})" style="color:${statusColor}; font-size:20px;">${statusIcon}</button>
-                <div class="task-info" onclick="openTaskModal(${task.id})">
-                  <div class="task-title ${task.status === 'completed' ? 'completed' : ''}">${task.title}${dueBadgeHtml}${recurBadge}</div>
-                  ${notePreview}
+                <div class="task-info">
+                  <div onclick="openTaskModal(${task.id})" style="cursor:pointer;">
+                    <div class="task-title ${task.status === 'completed' ? 'completed' : ''}">${task.title}${recurBadge}</div>
+                    ${notePreview}
+                  </div>
+                  ${dueBadgeHtml}
                   ${datePickerHtml}
                 </div>
                 <button class="pin-btn ${task.pinned ? 'pinned' : ''}" onclick="event.stopPropagation(); togglePin(${task.id})" title="Pin task">${pinIcon}</button>
@@ -3550,7 +3561,7 @@
       }
 
       // Also update Dexie cache
-      if (window.db) {
+      if (db) {
         try {
           await db.tasks.put({
             localId: task.id,
