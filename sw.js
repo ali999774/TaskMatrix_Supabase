@@ -2,7 +2,8 @@ const CACHE_NAME = 'taskmatrix-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/TaskMatrix_Supabase/',
-  '/TaskMatrix_Supabase/index.html'
+  '/TaskMatrix_Supabase/index.html',
+  '/TaskMatrix_Supabase/sw.js'
 ];
 
 const DB_NAME = 'taskmatrix-offline';
@@ -72,14 +73,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() =>
+        caches.match('/TaskMatrix_Supabase/index.html')
+      )
+    )
+    return
+  }
+
   // Everything else: Cache-first, fallback to network
   event.respondWith(
     caches.match(event.request).then((response) => {
-      return response || fetch(event.request).then((fetchResponse) => {
-        // Optionally cache new assets here if desired, 
-        // but sticking to requested assets for now.
-        return fetchResponse;
-      });
+      return response || fetch(event.request);
     })
   );
 });

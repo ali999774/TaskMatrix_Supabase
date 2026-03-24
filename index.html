@@ -1952,27 +1952,27 @@
     <div class="search-container collapsed" id="search-container">
       <div class="search-content">
         <div class="search-filter-bar">
-          <input type="text" id="search-input" class="search-input" placeholder="🔎 Search tasks..."
+          <input type="text" id="search-input" class="search-input" placeholder="🔎 Search tasks..." title="Search tasks"
             oninput="applyFilters()">
-          <select id="filter-category" class="filter-select" onchange="syncContextFromSelect(); applyFilters()">
+          <select id="filter-category" class="filter-select" onchange="syncContextFromSelect(); applyFilters()" title="Filter by category">
             <option value="all">All Categories</option>
             <option value="clinic">Clinic</option>
             <option value="practice-launch">Practice Launch</option>
             <option value="dev">Dev</option>
             <option value="personal">Personal</option>
           </select>
-          <select id="filter-status" class="filter-select" onchange="applyFilters()">
+          <select id="filter-status" class="filter-select" onchange="applyFilters()" title="Filter by status">
             <option value="all">All Status</option>
             <option value="todo">To Do</option>
             <option value="in-progress">In Progress</option>
           </select>
-          <select id="filter-date" class="filter-select" onchange="applyFilters()">
+          <select id="filter-date" class="filter-select" onchange="applyFilters()" title="Filter by due date">
             <option value="all">All Dates</option>
             <option value="overdue">Overdue</option>
             <option value="today">Due Today</option>
             <option value="week">Due This Week</option>
           </select>
-          <button class="clear-btn" onclick="clearFilters()">Clear</button>
+          <button class="clear-btn" onclick="clearFilters()" title="Clear filters">Clear</button>
         </div>
       </div>
     </div>
@@ -2497,8 +2497,50 @@
       const { data: { session } } = await supabaseClient.auth.getSession()
       if (session) {
         currentUser = session.user
+        
+        // --- FLUSH PENDING DEXIE TASKS BEFORE PULLING NEW ONES ---
+        if (db) {
+          try {
+            const pending = await db.tasks.where('pendingSync').equals(1).toArray()
+
+            for (const row of pending) {
+              const task = JSON.parse(row.data)
+              const { error } = await supabaseClient
+                .from('tasks')
+                .upsert({
+                  ...(task.supabaseId ? { id: task.supabaseId } : {}),
+                  user_id: currentUser.id,
+                  title: task.title,
+                  notes: task.notes || '',
+                  category: task.category || 'personal',
+                  importance: task.importance,
+                  urgency: task.urgency,
+                  status: task.status,
+                  due_date: task.dueDate || null,
+                  due_time: task.dueTime || null,
+                  estimated_duration: task.estimatedDuration || null,
+                  recurring: task.recurring || false,
+                  recur_frequency: task.recurFrequency || null,
+                  recur_interval: task.recurInterval || 1,
+                  recur_days: task.recurDays || [],
+                  tags: task.tags || [],
+                  subtasks: task.subtasks || [],
+                  pinned: task.pinned || false
+                }, { onConflict: 'id' })
+
+              if (!error) {
+                await db.tasks.put({ ...row, pendingSync: 0 })
+              }
+            }
+          } catch (syncErr) {
+            console.error('[sync] Error flushing pending tasks:', syncErr)
+          }
+        }
+        // -------------------------------------------------------------
+
         await loadTasksFromSupabase()
         render()
+        if (typeof updateStatsDisplay === 'function') updateStatsDisplay()
         setSyncState('synced')
       } else {
         showSessionExpiredBanner()
@@ -2548,7 +2590,7 @@
         await db.tasks.bulkPut(tasks.map(t => ({
           localId: t.id,
           supabaseId: t.supabaseId || null,
-          pendingSync: false,
+          pendingSync: 1,
           updatedAt: new Date().toISOString(),
           data: JSON.stringify(t)
         })))
@@ -2594,6 +2636,17 @@
                  t.createdAt === row.created_at))
               if (task) task.supabaseId = row.id
             })
+          }
+          
+          // Mark as synced locally
+          if (db) {
+            await db.tasks.bulkPut(tasks.map(t => ({
+              localId: t.id,
+              supabaseId: t.supabaseId,
+              pendingSync: 0,
+              updatedAt: new Date().toISOString(),
+              data: JSON.stringify(t)
+            })))
           }
         }
 
@@ -3222,6 +3275,7 @@
           setSyncState('synced')
         } catch (err) {
           await handleSupabaseError(err, 'toggleTaskStatus')
+          if (db) await db.tasks.put({ localId: task.id, supabaseId: task.supabaseId || null, pendingSync: 1, updatedAt: new Date().toISOString(), data: JSON.stringify(task) })
         }
       } else {
         saveTasks()
@@ -3428,9 +3482,14 @@
           .update({ importance: imp, urgency: urg, updated_at: new Date().toISOString() })
           .eq('id', task.supabaseId)
           .eq('user_id', currentUser.id)
-          .then(({ error }) => {
-            if (error) { console.error('[drop] update failed:', error); setSyncState('error'); }
-            else setSyncState('synced');
+          .then(async ({ error }) => {
+            if (error) { 
+              console.error('[drop] update failed:', error); 
+              setSyncState('error'); 
+              if (db) await db.tasks.put({ localId: task.id, supabaseId: task.supabaseId || null, pendingSync: 1, updatedAt: new Date().toISOString(), data: JSON.stringify(task) })
+            } else {
+              setSyncState('synced');
+            }
           });
       } else {
         // Fallback full save for tasks without supabaseId
@@ -3542,6 +3601,7 @@
           setSyncState('synced')
         } catch (err) {
           await handleSupabaseError(err, 'togglePin')
+          if (db) await db.tasks.put({ localId: task.id, supabaseId: task.supabaseId || null, pendingSync: 1, updatedAt: new Date().toISOString(), data: JSON.stringify(task) })
         }
       } else {
         saveTasks()
@@ -3734,17 +3794,20 @@
       task.modifiedAt = new Date().toISOString();
 
       // Targeted UPDATE — do not call saveTasks()
+      let pending = currentUser && task.supabaseId ? 0 : 1;
       if (task.supabaseId && currentUser) {
         try {
-          await supabaseClient
+          const { error } = await supabaseClient
             .from('tasks')
             .update({
               due_date: dateValue || null,
               updated_at: new Date().toISOString()
             })
             .eq('id', task.supabaseId);
+          if (error) throw error;
         } catch (err) {
           console.error('[saveTaskDate] error:', err);
+          pending = 1;
         }
       }
 
@@ -3754,11 +3817,13 @@
           await db.tasks.put({
             localId: task.id,
             supabaseId: task.supabaseId || null,
-            pendingSync: false,
+            pendingSync: pending,
             updatedAt: new Date().toISOString(),
             data: JSON.stringify(task)
           });
-        } catch (e) {}
+        } catch (e) {
+          console.error('[saveTaskDate] dexie put failed:', e);
+        }
       }
 
       // Close picker and re-render
@@ -4111,8 +4176,13 @@
           .update({ status: 'archived', updated_at: new Date().toISOString() })
           .eq('id', currentEditingTask.supabaseId)
           .eq('user_id', currentUser.id);
-        if (error) { console.error('[archive] update failed:', error); setSyncState('error'); }
-        else setSyncState('synced');
+        if (error) { 
+          console.error('[archive] update failed:', error); 
+          setSyncState('error'); 
+          if (db) await db.tasks.put({ localId: currentEditingTask.id, supabaseId: currentEditingTask.supabaseId || null, pendingSync: 1, updatedAt: new Date().toISOString(), data: JSON.stringify(currentEditingTask) })
+        } else {
+          setSyncState('synced');
+        }
       } else {
         saveTasks();
       }
@@ -4133,8 +4203,13 @@
           .update({ status: 'todo', updated_at: new Date().toISOString() })
           .eq('id', task.supabaseId)
           .eq('user_id', currentUser.id);
-        if (error) { console.error('[restore] update failed:', error); setSyncState('error'); }
-        else setSyncState('synced');
+        if (error) { 
+          console.error('[restore] update failed:', error); 
+          setSyncState('error'); 
+          if (db) await db.tasks.put({ localId: task.id, supabaseId: task.supabaseId || null, pendingSync: 1, updatedAt: new Date().toISOString(), data: JSON.stringify(task) })
+        } else {
+          setSyncState('synced');
+        }
       } else {
         saveTasks();
       }
