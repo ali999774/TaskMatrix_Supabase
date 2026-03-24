@@ -2492,59 +2492,59 @@
     }
 
     window.addEventListener('online', async () => {
-      console.log('[network] back online — reinitialising Supabase connection')
+      console.log('[online] network restored')
       setSyncState('syncing')
       const { data: { session } } = await supabaseClient.auth.getSession()
-      if (session) {
-        currentUser = session.user
-        
-        // --- FLUSH PENDING DEXIE TASKS BEFORE PULLING NEW ONES ---
-        if (db) {
-          try {
-            const pending = await db.tasks.where('pendingSync').equals(1).toArray()
-
-            for (const row of pending) {
-              const task = JSON.parse(row.data)
-              const { error } = await supabaseClient
-                .from('tasks')
-                .upsert({
-                  ...(task.supabaseId ? { id: task.supabaseId } : {}),
-                  user_id: currentUser.id,
-                  title: task.title,
-                  notes: task.notes || '',
-                  category: task.category || 'personal',
-                  importance: task.importance,
-                  urgency: task.urgency,
-                  status: task.status,
-                  due_date: task.dueDate || null,
-                  due_time: task.dueTime || null,
-                  estimated_duration: task.estimatedDuration || null,
-                  recurring: task.recurring || false,
-                  recur_frequency: task.recurFrequency || null,
-                  recur_interval: task.recurInterval || 1,
-                  recur_days: task.recurDays || [],
-                  tags: task.tags || [],
-                  subtasks: task.subtasks || [],
-                  pinned: task.pinned || false
-                }, { onConflict: 'id' })
-
-              if (!error) {
-                await db.tasks.put({ ...row, pendingSync: 0 })
-              }
+      console.log('[online] session:', session ? 'valid' : 'null')
+      if (!session) { showSessionExpiredBanner(); return }
+      
+      currentUser = session.user
+      
+      if (db) {
+        try {
+          const pending = await db.tasks.where('pendingSync').equals(1).toArray()
+          console.log('[online] pending tasks to flush:', pending.length)
+          
+          for (const row of pending) {
+            const task = JSON.parse(row.data)
+            console.log('[online] flushing task:', task.title)
+            const { error } = await supabaseClient.from('tasks').upsert({
+              ...(task.supabaseId ? { id: task.supabaseId } : {}),
+              user_id: currentUser.id,
+              title: task.title,
+              notes: task.notes || '',
+              category: task.category || 'personal',
+              importance: task.importance,
+              urgency: task.urgency,
+              status: task.status,
+              due_date: task.dueDate || null,
+              due_time: task.dueTime || null,
+              estimated_duration: task.estimatedDuration || null,
+              recurring: task.recurring || false,
+              recur_frequency: task.recurFrequency || null,
+              recur_interval: task.recurInterval || 1,
+              recur_days: task.recurDays || [],
+              tags: task.tags || [],
+              subtasks: task.subtasks || [],
+              pinned: task.pinned || false
+            }, { onConflict: 'id' })
+            
+            if (error) {
+              console.error('[online] flush error for', task.title, error)
+            } else {
+              console.log('[online] flushed successfully:', task.title)
+              await db.tasks.put({ ...row, pendingSync: 0 })
             }
-          } catch (syncErr) {
-            console.error('[sync] Error flushing pending tasks:', syncErr)
           }
+        } catch (syncErr) {
+          console.error('[sync] Error flushing pending tasks:', syncErr)
         }
-        // -------------------------------------------------------------
-
-        await loadTasksFromSupabase()
-        render()
-        if (typeof updateStatsDisplay === 'function') updateStatsDisplay()
-        setSyncState('synced')
-      } else {
-        showSessionExpiredBanner()
       }
+      
+      await loadTasksFromSupabase()
+      render()
+      if (typeof updateStatsDisplay === 'function') updateStatsDisplay()
+      setSyncState('synced')
     })
 
     window.addEventListener('offline', () => {
