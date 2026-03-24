@@ -3,6 +3,7 @@
 
 <head>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dexie@4/dist/dexie.umd.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TaskMatrix</title>
@@ -2175,6 +2176,13 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1bG54d3d3anB2Z3NhcW5zbGxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMTQwMzYsImV4cCI6MjA4OTc5MDAzNn0.lWoihSm-kv_Ep5fXQZ55H4YU5wXmmKvK4LVLSBIVYic'
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
+    // ── Fix 4: Dexie.js write-through local cache ─────────────────
+    const db = new Dexie('taskmatrix')
+    db.version(1).stores({
+      tasks: 'localId, supabaseId, updatedAt, pendingSync',
+      notes: 'localId, supabaseId, updatedAt, pendingSync'
+    })
+
     let currentUser = null  // set after auth
 
     let tasks = [];
@@ -2247,6 +2255,96 @@
       if (container) container.style.visibility = '';
     }
 
+    // ── Fix 3: Session health check + auto-recovery ──────────────
+    async function handleSupabaseError(err, context) {
+      console.error(`[${context}] Supabase error:`, err)
+      if (err?.message?.includes('JWT') ||
+          err?.message?.includes('token') ||
+          err?.message?.includes('session') ||
+          err?.status === 401) {
+        const { error: refreshError } = await supabaseClient.auth.refreshSession()
+        if (refreshError) {
+          setSyncState('error')
+          showSessionExpiredBanner()
+        } else {
+          setSyncState('synced')
+          await loadTasksFromSupabase()
+          render()
+        }
+      } else {
+        setSyncState('error')
+      }
+    }
+
+    function showSessionExpiredBanner() {
+      const existing = document.getElementById('session-expired-banner')
+      if (existing) return
+      const banner = document.createElement('div')
+      banner.id = 'session-expired-banner'
+      banner.style.cssText = `
+        position:fixed; top:70px; left:50%; transform:translateX(-50%);
+        background:var(--danger-bg); border:1px solid var(--danger);
+        border-radius:12px; padding:16px 24px; z-index:500;
+        box-shadow:0 10px 25px rgba(0,0,0,0.1); display:flex;
+        align-items:center; gap:16px; font-size:14px; color:var(--danger);
+      `
+      banner.innerHTML = `
+        <span>⚠ Session expired</span>
+        <button onclick="signInWithGoogle()"
+          style="background:var(--primary);color:white;border:none;
+          padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;">
+          Sign in again
+        </button>
+        <button onclick="document.getElementById('session-expired-banner').remove()"
+          style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:18px;">×</button>
+      `
+      document.body.appendChild(banner)
+    }
+
+    window.addEventListener('online', async () => {
+      console.log('[network] back online — reinitialising Supabase connection')
+      setSyncState('syncing')
+      const { data: { session } } = await supabaseClient.auth.getSession()
+      if (session) {
+        currentUser = session.user
+        await loadTasksFromSupabase()
+        render()
+        setSyncState('synced')
+      } else {
+        showSessionExpiredBanner()
+      }
+    })
+
+    window.addEventListener('offline', () => {
+      setSyncState('offline')
+    })
+
+    // ── Fix 4: mapRowToTask helper ────────────────────────────────
+    function mapRowToTask(row) {
+      return {
+        id: Date.now() + Math.random(),
+        supabaseId: row.id,
+        title: row.title,
+        notes: row.notes,
+        category: row.category,
+        importance: row.importance,
+        urgency: row.urgency,
+        status: row.status,
+        dueDate: row.due_date,
+        dueTime: row.due_time,
+        estimatedDuration: row.estimated_duration,
+        recurring: row.recurring,
+        recurFrequency: row.recur_frequency,
+        recurInterval: row.recur_interval,
+        recurDays: row.recur_days || [],
+        tags: row.tags || [],
+        subtasks: row.subtasks || [],
+        pinned: row.pinned,
+        createdAt: row.created_at,
+        modifiedAt: row.updated_at
+      }
+    }
+
     // ── Supabase data operations ─────────────────────────────────
     async function saveTasks() {
       if (!currentUser) {
@@ -2254,75 +2352,64 @@
         return;
       }
       setSyncState('syncing');
-      console.log('[saveTasks] START — user:', currentUser.id, '| tasks:', tasks.length);
+
+      // Fix 4: Write to Dexie first (always succeeds offline)
       try {
-        // ── Step 1: delete all rows for this user ─────────────────
-        console.log('[saveTasks] Deleting existing rows…');
-        const { error: deleteError } = await supabaseClient
-          .from('tasks')
-          .delete()
-          .eq('user_id', currentUser.id);
-        if (deleteError) {
-          console.error('[saveTasks] DELETE failed:', deleteError);
-          throw deleteError;
-        }
-        console.log('[saveTasks] DELETE ok');
+        await db.tasks.bulkPut(tasks.map(t => ({
+          localId: t.id,
+          supabaseId: t.supabaseId || null,
+          pendingSync: false,
+          updatedAt: new Date().toISOString(),
+          data: JSON.stringify(t)
+        })))
+      } catch (dexieErr) {
+        console.warn('[saveTasks] Dexie write failed:', dexieErr)
+      }
 
-        // ── Step 2: insert fresh rows (no id / created_at / updated_at) ──
-        if (tasks.length > 0) {
-          const rows = tasks.map(t => ({
-            // Never pass `id` — let Supabase generate a fresh UUID
-            user_id:            currentUser.id,
-            title:              t.title,
-            notes:              t.notes              || '',
-            category:           t.category           || 'personal',
-            importance:         t.importance,
-            urgency:            t.urgency,
-            status:             t.status,
-            due_date:           t.dueDate            || null,
-            due_time:           t.dueTime            || null,
-            estimated_duration: t.estimatedDuration  || null,
-            recurring:          t.recurring          || false,
-            recur_frequency:    t.recurFrequency     || null,
-            recur_interval:     t.recurInterval      || 1,
-            recur_days:         t.recurDays          || [],
-            tags:               t.tags               || [],
-            subtasks:           t.subtasks           || [],
-            pinned:             t.pinned             || false,
-            // created_at / updated_at: let column defaults + trigger handle these
-          }));
-          console.log('[saveTasks] Inserting', rows.length, 'row(s)…');
-          console.log('[saveTasks] Row sample:', JSON.stringify(rows[0]));
+      try {
+        // Fix 1: per-row upsert — no delete+insert
+        const toUpsert = tasks.map(t => ({
+          ...(t.supabaseId ? { id: t.supabaseId } : {}),
+          user_id:            currentUser.id,
+          title:              t.title,
+          notes:              t.notes              || '',
+          category:           t.category           || 'personal',
+          importance:         t.importance,
+          urgency:            t.urgency,
+          status:             t.status,
+          due_date:           t.dueDate            || null,
+          due_time:           t.dueTime            || null,
+          estimated_duration: t.estimatedDuration  || null,
+          recurring:          t.recurring          || false,
+          recur_frequency:    t.recurFrequency     || null,
+          recur_interval:     t.recurInterval      || 1,
+          recur_days:         t.recurDays          || [],
+          tags:               t.tags               || [],
+          subtasks:           t.subtasks           || [],
+          pinned:             t.pinned             || false
+        }))
 
-          const { data, error: insertError } = await supabaseClient
+        if (toUpsert.length > 0) {
+          const { data, error } = await supabaseClient
             .from('tasks')
-            .insert(rows)
-            .select();
-          if (insertError) {
-            console.error('[saveTasks] INSERT failed:', insertError);
-            throw insertError;
-          }
-          // Assign the new Supabase UUIDs back to local task objects
+            .upsert(toUpsert, { onConflict: 'id' })
+            .select()
+          if (error) throw error
+
+          // Capture supabaseIds for newly inserted tasks
           if (data) {
-            data.forEach((row, i) => { if (tasks[i]) tasks[i].supabaseId = row.id; });
+            data.forEach(row => {
+              const task = tasks.find(t => t.supabaseId === row.id ||
+                (!t.supabaseId && t.title === row.title &&
+                 t.createdAt === row.created_at))
+              if (task) task.supabaseId = row.id
+            })
           }
-          console.log('[saveTasks] INSERT ok — got', data?.length, 'rows back');
         }
 
         setSyncState('synced');
-        console.log('[saveTasks] DONE — synced');
       } catch (err) {
-        console.error('[saveTasks] FAILED:', err?.message || err, err);
-        setSyncState('error');
-        // Surface the error visibly so it's readable without DevTools
-        const prev = document.getElementById('_save_err');
-        if (prev) prev.remove();
-        const banner = document.createElement('div');
-        banner.id = '_save_err';
-        banner.style.cssText = 'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;padding:10px 20px;border-radius:8px;font-size:13px;z-index:9999;max-width:90vw;cursor:pointer;';
-        banner.textContent = '⚠ Save failed: ' + (err?.message || JSON.stringify(err)) + ' — click to dismiss';
-        banner.onclick = () => banner.remove();
-        document.body.appendChild(banner);
+        await handleSupabaseError(err, 'saveTasks')
       }
     }
 
@@ -2337,32 +2424,37 @@
           .eq('user_id', currentUser.id)
           .order('created_at', { ascending: true });
         if (error) throw error;
-        tasks = data.map(row => ({
-          id: Date.now() + Math.floor(Math.random() * 1000),
-          supabaseId: row.id,
-          title: row.title,
-          notes: row.notes,
-          category: row.category,
-          importance: row.importance,
-          urgency: row.urgency,
-          status: row.status,
-          dueDate: row.due_date,
-          dueTime: row.due_time,
-          estimatedDuration: row.estimated_duration,
-          recurring: row.recurring,
-          recurFrequency: row.recur_frequency,
-          recurInterval: row.recur_interval,
-          recurDays: row.recur_days || [],
-          tags: row.tags || [],
-          subtasks: row.subtasks || [],
-          pinned: row.pinned,
-          createdAt: row.created_at,
-          modifiedAt: row.updated_at
-        }));
+
+        tasks = data.map(mapRowToTask);
+
+        // Fix 4: Update Dexie cache with fresh data
+        try {
+          await db.tasks.bulkPut(tasks.map(t => ({
+            localId: t.id,
+            supabaseId: t.supabaseId,
+            pendingSync: false,
+            updatedAt: new Date().toISOString(),
+            data: JSON.stringify(t)
+          })))
+        } catch (dexieErr) {
+          console.warn('[loadTasks] Dexie cache update failed:', dexieErr)
+        }
+
         setSyncState('synced');
       } catch (err) {
-        console.error('Load error:', err);
-        setSyncState('error');
+        // Fix 4: Fall back to Dexie cache on Supabase failure
+        console.warn('[loadTasks] Supabase failed, loading from Dexie cache')
+        try {
+          const cached = await db.tasks.toArray()
+          if (cached.length > 0) {
+            tasks = cached.map(row => JSON.parse(row.data))
+            setSyncState('offline')
+          } else {
+            await handleSupabaseError(err, 'loadTasksFromSupabase')
+          }
+        } catch (dexieErr) {
+          await handleSupabaseError(err, 'loadTasksFromSupabase')
+        }
       }
     }
 
@@ -2574,15 +2666,13 @@
         const input = document.getElementById('quick-add-input');
         const text = input.value.trim();
         if (!text) return;
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
         const newTaskCategory = activeContext === 'all' ? 'personal' : activeContext;
         const newTask = {
           id: Date.now(),
           title: text,
           category: newTaskCategory,
           status: 'todo',
-          dueDate: tomorrow.toISOString().split('T')[0],
+          dueDate: null,
           importance: 3,
           urgency: 3,
           notes: '',
@@ -2903,9 +2993,13 @@
       if (!event.target.closest('.quadrant-move-btn') && !event.target.closest('.quadrant-popover')) {
         document.querySelectorAll('.quadrant-popover.show').forEach(p => p.classList.remove('show'));
       }
+      // Close inline date pickers on outside click
+      if (!event.target.closest('.date-toggle') && !event.target.closest('[id^="datepicker-"]')) {
+        document.querySelectorAll('[id^="datepicker-"]').forEach(el => { el.style.display = 'none'; });
+      }
     });
 
-    function toggleTaskStatus(id) {
+    async function toggleTaskStatus(id) {
       const task = tasks.find(t => t.id === id);
       if (!task) return;
       if (task.status === 'todo') task.status = 'in-progress';
@@ -2917,10 +3011,25 @@
         }
       }
       else task.status = 'todo';
-      saveTasks();
       render();
       updateStatsDisplay();
       if (showCompleted) renderCompletedTasks();
+      // Fix 2: targeted single-row UPDATE instead of full saveTasks()
+      if (task.supabaseId && currentUser) {
+        setSyncState('syncing')
+        try {
+          const { error } = await supabaseClient
+            .from('tasks')
+            .update({ status: task.status, updated_at: new Date().toISOString() })
+            .eq('id', task.supabaseId)
+          if (error) throw error
+          setSyncState('synced')
+        } catch (err) {
+          await handleSupabaseError(err, 'toggleTaskStatus')
+        }
+      } else {
+        saveTasks()
+      }
     }
 
     function createNextRecurrence(completedTask) {
@@ -2987,10 +3096,27 @@
       saveStats();
     }
 
-    function deleteTask(id) {
+    async function deleteTask(id) {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
       if (confirm('Delete this task?')) {
+        // Fix 1: immediate targeted DELETE by supabaseId
+        if (task.supabaseId && currentUser) {
+          setSyncState('syncing')
+          try {
+            const { error } = await supabaseClient
+              .from('tasks')
+              .delete()
+              .eq('id', task.supabaseId)
+            if (error) throw error
+            setSyncState('synced')
+          } catch (err) {
+            await handleSupabaseError(err, 'deleteTask')
+          }
+        }
+        // Also remove from Dexie cache
+        try { await db.tasks.delete(id) } catch (e) {}
         tasks = tasks.filter(t => t.id !== id);
-        saveTasks();
         render();
         updateStatsDisplay();
         if (showCompleted) renderCompletedTasks();
@@ -3203,12 +3329,27 @@
       render();
     }
 
-    function togglePin(id) {
+    async function togglePin(id) {
       const task = tasks.find(t => t.id === id);
       if (!task) return;
       task.pinned = !task.pinned;
-      saveTasks();
       render();
+      // Fix 2: targeted UPDATE for pin field only
+      if (task.supabaseId && currentUser) {
+        setSyncState('syncing')
+        try {
+          const { error } = await supabaseClient
+            .from('tasks')
+            .update({ pinned: task.pinned, updated_at: new Date().toISOString() })
+            .eq('id', task.supabaseId)
+          if (error) throw error
+          setSyncState('synced')
+        } catch (err) {
+          await handleSupabaseError(err, 'togglePin')
+        }
+      } else {
+        saveTasks()
+      }
     }
 
     function toggleSortDropdown(quad, event) {
@@ -3299,18 +3440,58 @@
             const statusColor = task.status === 'completed' ? '#16a34a' : task.status === 'in-progress' ? '#3b82f6' : '#9ca3af';
             const dueStatus = getDueStatus(task.dueDate);
             let dueClass = '';
-            let dueBadge = '';
-            if (dueStatus === 'overdue') { dueClass = 'overdue'; dueBadge = '<span class="due-badge overdue">Overdue</span>'; }
-            else if (dueStatus === 'today') { dueClass = 'due-today'; dueBadge = '<span class="due-badge today">Today</span>'; }
-            else if (dueStatus === 'soon') { dueClass = 'due-soon'; dueBadge = '<span class="due-badge soon">This Week</span>'; }
+            // Fix 1: clickable due badge that toggles inline date picker
+            const dueBadgeHtml = dueStatus ? `
+              <span class="due-badge ${dueStatus} date-toggle"
+                onclick="event.stopPropagation(); toggleDatePicker(${task.id})"
+                title="Click to change date"
+                style="cursor:pointer;">
+                ${dueStatus === 'overdue' ? 'Overdue' : dueStatus === 'today' ? 'Today' : 'This Week'}
+              </span>` : `
+              <span class="due-badge no-date date-toggle"
+                onclick="event.stopPropagation(); toggleDatePicker(${task.id})"
+                title="Set due date"
+                style="cursor:pointer; background:var(--quad-gray-header); color:var(--quad-gray-text); font-size:10px;">
+                + date
+              </span>`;
+            if (dueStatus === 'overdue') dueClass = 'overdue';
+            else if (dueStatus === 'today') dueClass = 'due-today';
+            else if (dueStatus === 'soon') dueClass = 'due-soon';
+            // Inline date picker (hidden by default)
+            const datePickerHtml = `
+              <div id="datepicker-${task.id}" style="display:none; margin-top:4px;">
+                <input type="date"
+                  value="${task.dueDate || ''}"
+                  onchange="event.stopPropagation(); saveTaskDate(${task.id}, this.value)"
+                  onclick="event.stopPropagation()"
+                  style="font-size:12px; padding:4px 8px; border:1px solid var(--border-input);
+                  border-radius:6px; background:var(--bg-card); color:var(--text-primary); width:100%;">
+                <button onclick="event.stopPropagation(); saveTaskDate(${task.id}, '')"
+                  style="font-size:10px; color:var(--text-muted); background:none;
+                  border:none; cursor:pointer; margin-top:2px;">Clear date</button>
+              </div>`;
             const pinnedClass = task.pinned ? 'pinned' : '';
             const pinIcon = task.pinned ? '📌' : '📍';
             const recurBadge = task.recurring ? '<span class="recurring-badge">🔄</span>' : '';
+            // Fix 2: note preview (max 60 chars)
+            const notePreview = task.notes && task.notes.trim()
+              ? `<div class="task-note-preview" onclick="openTaskModal(${task.id})"
+                  style="font-size:11px; color:var(--text-muted); margin-top:2px;
+                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                  max-width:100%; cursor:pointer;"
+                  title="${task.notes.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}">
+                  ${task.notes.trim().substring(0, 60)}${task.notes.trim().length > 60 ? '\u2026' : ''}
+                </div>`
+              : '';
             const taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
             return `<div class="task ${task.category} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()">
               <div class="task-content">
                 <button class="icon-btn" onclick="event.stopPropagation(); toggleTaskStatus(${task.id})" style="color:${statusColor}; font-size:20px;">${statusIcon}</button>
-                <div class="task-info" onclick="openTaskModal(${task.id})"><div class="task-title ${task.status === 'completed' ? 'completed' : ''}">${task.title}${dueBadge}${recurBadge}</div></div>
+                <div class="task-info" onclick="openTaskModal(${task.id})">
+                  <div class="task-title ${task.status === 'completed' ? 'completed' : ''}">${task.title}${dueBadgeHtml}${recurBadge}</div>
+                  ${notePreview}
+                  ${datePickerHtml}
+                </div>
                 <button class="pin-btn ${task.pinned ? 'pinned' : ''}" onclick="event.stopPropagation(); togglePin(${task.id})" title="Pin task">${pinIcon}</button>
                 <div style="position:relative;">
                   <button class="quadrant-move-btn" onclick="toggleQuadrantPopover(${task.id}, event)" title="Move to quadrant">⊞</button>
@@ -3331,6 +3512,60 @@
       updateStatsDisplay();
       renderTodayStrip();
       if (typeof renderArchived === 'function') renderArchived(); // Phase 2A
+    }
+
+    // ── Fix 1: Inline date picker functions ─────────────────────
+    function toggleDatePicker(taskId) {
+      // Close all other open date pickers first
+      document.querySelectorAll('[id^="datepicker-"]').forEach(el => {
+        if (el.id !== 'datepicker-' + taskId) el.style.display = 'none';
+      });
+      const picker = document.getElementById('datepicker-' + taskId);
+      if (!picker) return;
+      const isOpen = picker.style.display === 'block';
+      picker.style.display = isOpen ? 'none' : 'block';
+      if (!isOpen) picker.querySelector('input[type="date"]').focus();
+    }
+
+    async function saveTaskDate(taskId, dateValue) {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      task.dueDate = dateValue || null;
+      task.modifiedAt = new Date().toISOString();
+
+      // Targeted UPDATE — do not call saveTasks()
+      if (task.supabaseId && currentUser) {
+        try {
+          await supabaseClient
+            .from('tasks')
+            .update({
+              due_date: dateValue || null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', task.supabaseId);
+        } catch (err) {
+          console.error('[saveTaskDate] error:', err);
+        }
+      }
+
+      // Also update Dexie cache
+      if (window.db) {
+        try {
+          await db.tasks.put({
+            localId: task.id,
+            supabaseId: task.supabaseId || null,
+            pendingSync: false,
+            updatedAt: new Date().toISOString(),
+            data: JSON.stringify(task)
+          });
+        } catch (e) {}
+      }
+
+      // Close picker and re-render
+      const picker = document.getElementById('datepicker-' + taskId);
+      if (picker) picker.style.display = 'none';
+      render();
     }
 
     // ── Change 3: Quadrant move popover ─────────────────────────
@@ -3562,11 +3797,27 @@
       closeTaskModal();
     }
 
-    function deleteTaskFromModal() {
+    async function deleteTaskFromModal() {
       if (!currentEditingTask) return;
       if (confirm('Delete this task?')) {
-        tasks = tasks.filter(t => t.id !== currentEditingTask.id);
-        saveTasks();
+        const task = currentEditingTask;
+        // Fix 1: immediate targeted DELETE by supabaseId
+        if (task.supabaseId && currentUser) {
+          setSyncState('syncing')
+          try {
+            const { error } = await supabaseClient
+              .from('tasks')
+              .delete()
+              .eq('id', task.supabaseId)
+            if (error) throw error
+            setSyncState('synced')
+          } catch (err) {
+            await handleSupabaseError(err, 'deleteTaskFromModal')
+          }
+        }
+        // Also remove from Dexie cache
+        try { await db.tasks.delete(task.id) } catch (e) {}
+        tasks = tasks.filter(t => t.id !== task.id);
         render();
         updateStatsDisplay();
         closeTaskModal();
