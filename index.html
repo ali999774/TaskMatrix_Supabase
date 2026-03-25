@@ -2386,14 +2386,42 @@
     let sortModes = { 'do-first': 'manual', 'schedule': 'manual', 'delegate': 'manual', 'eliminate': 'manual' };
     let filters = { search: '', category: 'all', status: 'all', date: 'all' };
     let activeContext = 'all'; // Change 5: context switcher state
+    let localChangeInFlight = false;
 
     // ── Pulse animation for sync dot ─────────────────────────────
     const _pulseStyle = document.createElement('style');
     _pulseStyle.textContent = `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`;
     document.head.appendChild(_pulseStyle);
 
+    function handleTaskInfoClick(event, taskId) {
+      if (event.target.closest('.date-toggle') ||
+          event.target.closest('[id^="datepicker-"]') ||
+          event.target.closest('input[type="date"]') ||
+          (event.target.closest('.task-note-preview') === null &&
+          event.target.closest('.date-toggle') === null && false)) {
+      }
+      if (!event.target.closest('.date-toggle') &&
+          !event.target.closest('[id^="datepicker-"]') &&
+          !event.target.closest('input[type="date"]')) {
+        openTaskModal(taskId)
+      }
+    }
+
     // ── Sync state ───────────────────────────────────────────────
+    let syncStateTimer = null;
     function setSyncState(state) {
+      if (state === 'synced') {
+        clearTimeout(syncStateTimer)
+        applyDotState('synced')
+      } else if (state === 'syncing') {
+        applyDotState('syncing')
+      } else {
+        clearTimeout(syncStateTimer)
+        syncStateTimer = setTimeout(() => applyDotState(state), 2000)
+      }
+    }
+
+    function applyDotState(state) {
       const dot = document.getElementById('sync-dot');
       if (!dot) return;
       const states = {
@@ -2491,24 +2519,29 @@
       document.body.appendChild(banner)
     }
 
-    window.addEventListener('online', async () => {
-      console.log('[online] network restored')
-      setSyncState('syncing')
+  window.addEventListener('online', async () => {
+    console.log('[online] network restored — starting flush')
+    setSyncState('syncing')
+
+    try {
       const { data: { session } } = await supabaseClient.auth.getSession()
-      console.log('[online] session:', session ? 'valid' : 'null')
-      if (!session) { showSessionExpiredBanner(); return }
-      
+      if (!session) {
+        console.warn('[online] no session — showing sign-in prompt')
+        showSessionExpiredBanner()
+        setSyncState('error')
+        return
+      }
+
       currentUser = session.user
-      
+
       if (db) {
-        try {
-          const pending = await db.tasks.where('pendingSync').equals(1).toArray()
-          console.log('[online] pending tasks to flush:', pending.length)
-          
-          for (const row of pending) {
+        const pending = await db.tasks.where('pendingSync').equals(1).toArray()
+        console.log('[online] pending tasks:', pending.length)
+
+        for (const row of pending) {
+          try {
             const task = JSON.parse(row.data)
-            console.log('[online] flushing task:', task.title)
-            const { error } = await supabaseClient.from('tasks').upsert({
+            const upsertRow = {
               ...(task.supabaseId ? { id: task.supabaseId } : {}),
               user_id: currentUser.id,
               title: task.title,
@@ -2527,25 +2560,45 @@
               tags: task.tags || [],
               subtasks: task.subtasks || [],
               pinned: task.pinned || false
-            }, { onConflict: 'id' })
-            
-            if (error) {
-              console.error('[online] flush error for', task.title, error)
-            } else {
-              console.log('[online] flushed successfully:', task.title)
-              await db.tasks.put({ ...row, pendingSync: 0 })
             }
+
+            const { data, error } = await supabaseClient
+              .from('tasks')
+              .upsert(upsertRow, { onConflict: 'id' })
+              .select()
+
+            if (error) {
+              console.error('[online] flush failed for:', task.title, error)
+            } else {
+              // Update supabaseId if this was a new task
+              if (data?.[0]?.id && !task.supabaseId) {
+                await db.tasks.put({
+                  ...row,
+                  supabaseId: data[0].id,
+                  pendingSync: 0
+                })
+              } else {
+                await db.tasks.put({ ...row, pendingSync: 0 })
+              }
+              console.log('[online] flushed:', task.title)
+            }
+          } catch (rowErr) {
+            console.error('[online] row flush error:', rowErr)
           }
-        } catch (syncErr) {
-          console.error('[sync] Error flushing pending tasks:', syncErr)
         }
       }
-      
+
       await loadTasksFromSupabase()
       render()
       if (typeof updateStatsDisplay === 'function') updateStatsDisplay()
       setSyncState('synced')
-    })
+      console.log('[online] flush complete')
+
+    } catch (err) {
+      console.error('[online] flush handler error:', err)
+      setSyncState('error')
+    }
+  })
 
     window.addEventListener('offline', () => {
       setSyncState('offline')
@@ -2579,6 +2632,8 @@
 
     // ── Supabase data operations ─────────────────────────────────
     async function saveTasks() {
+      localChangeInFlight = true;
+      try {
       if (!currentUser) {
         console.warn('[saveTasks] No currentUser — skipping save');
         return;
@@ -2654,6 +2709,7 @@
       } catch (err) {
         await handleSupabaseError(err, 'saveTasks')
       }
+      } finally { localChangeInFlight = false; }
     }
 
 
@@ -3249,6 +3305,8 @@
     });
 
     async function toggleTaskStatus(id) {
+      localChangeInFlight = true;
+      try {
       const task = tasks.find(t => t.id === id);
       if (!task) return;
       if (task.status === 'todo') task.status = 'in-progress';
@@ -3278,8 +3336,9 @@
           if (db) await db.tasks.put({ localId: task.id, supabaseId: task.supabaseId || null, pendingSync: 1, updatedAt: new Date().toISOString(), data: JSON.stringify(task) })
         }
       } else {
-        saveTasks()
+        await saveTasks()
       }
+      } finally { localChangeInFlight = false; }
     }
 
     function createNextRecurrence(completedTask) {
@@ -3457,7 +3516,9 @@
     function dragEnd() { draggedTask = null; }
     function allowDrop(e) { e.preventDefault(); }
 
-    function drop(e, quad) {
+    async function drop(e, quad) {
+      localChangeInFlight = true;
+      try {
       e.preventDefault();
       // Remove drag-over highlight from all quadrants
       document.querySelectorAll('.quadrant').forEach(q => q.classList.remove('drag-over'));
@@ -3495,7 +3556,10 @@
         // Fallback full save for tasks without supabaseId
         saveTasks();
       }
+    } finally {
+      localChangeInFlight = false;
     }
+  }
 
     function getDueStatus(dueDate) {
       if (!dueDate) return '';
@@ -3585,6 +3649,8 @@
     }
 
     async function togglePin(id) {
+      localChangeInFlight = true;
+      try {
       const task = tasks.find(t => t.id === id);
       if (!task) return;
       task.pinned = !task.pinned;
@@ -3604,8 +3670,9 @@
           if (db) await db.tasks.put({ localId: task.id, supabaseId: task.supabaseId || null, pendingSync: 1, updatedAt: new Date().toISOString(), data: JSON.stringify(task) })
         }
       } else {
-        saveTasks()
+        await saveTasks()
       }
+      } finally { localChangeInFlight = false; }
     }
 
     function toggleSortDropdown(quad, event) {
@@ -3731,7 +3798,7 @@
             const recurBadge = task.recurring ? '<span class="recurring-badge">🔄</span>' : '';
             // Fix 2: note preview (max 60 chars)
             const notePreview = task.notes && task.notes.trim()
-              ? `<div class="task-note-preview" onclick="openTaskModal(${task.id})"
+              ? `<div class="task-note-preview"
                   style="font-size:11px; color:var(--text-muted); margin-top:2px;
                   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
                   max-width:100%; cursor:pointer;"
@@ -3743,11 +3810,11 @@
             return `<div class="task ${task.category} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()">
               <div class="task-content">
                 <button class="icon-btn" onclick="event.stopPropagation(); toggleTaskStatus(${task.id})" style="color:${statusColor}; font-size:20px;">${statusIcon}</button>
-                <div class="task-info">
-                  <div onclick="openTaskModal(${task.id})" style="cursor:pointer;">
-                    <div class="task-title ${task.status === 'completed' ? 'completed' : ''}">${task.title}${recurBadge}</div>
-                    ${notePreview}
+                <div class="task-info" style="cursor:pointer" onclick="handleTaskInfoClick(event, ${task.id})">
+                  <div class="task-title ${task.status === 'completed' ? 'completed' : ''}">
+                    ${task.title}${recurBadge}
                   </div>
+                  ${notePreview}
                   ${dueBadgeHtml}
                   ${datePickerHtml}
                 </div>
@@ -3787,6 +3854,8 @@
     }
 
     async function saveTaskDate(taskId, dateValue) {
+      localChangeInFlight = true;
+      try {
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
 
@@ -3830,7 +3899,10 @@
       const picker = document.getElementById('datepicker-' + taskId);
       if (picker) picker.style.display = 'none';
       render();
+    } finally {
+      localChangeInFlight = false;
     }
+  }
 
     // ── Change 3: Quadrant move popover ─────────────────────────
     function toggleQuadrantPopover(taskId, event) {
@@ -4166,6 +4238,8 @@
     let archivedVisible = false;
 
     async function archiveTaskFromModal() {
+      localChangeInFlight = true;
+      try {
       if (!currentEditingTask) return;
       currentEditingTask.status = 'archived';
       currentEditingTask.modifiedAt = Date.now();
@@ -4189,9 +4263,12 @@
       closeTaskModal();
       render();
       renderArchived();
+      } finally { localChangeInFlight = false; }
     }
 
     async function restoreTask(taskId) {
+      localChangeInFlight = true;
+      try {
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
       task.status = 'todo';
@@ -4215,6 +4292,7 @@
       }
       render();
       renderArchived();
+      } finally { localChangeInFlight = false; }
     }
 
     function renderArchived() {
@@ -4260,6 +4338,7 @@
           { event: '*', schema: 'public', table: 'tasks',
             filter: `user_id=eq.${userId}` },
           (payload) => {
+            if (localChangeInFlight) return;
             // Debounce to avoid hammering on rapid changes
             clearTimeout(setupRealtime._tasksTimer);
             setupRealtime._tasksTimer = setTimeout(() => {
