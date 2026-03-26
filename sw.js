@@ -77,11 +77,17 @@ self.addEventListener('fetch', (event) => {
 
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() =>
-        caches.match('/TaskMatrix_Supabase/index.html')
-      )
-    )
-    return
+      fetch(event.request).catch(async () => {
+        const cache = await caches.open(CACHE_NAME);
+        return (
+          (await cache.match(event.request)) ||
+          (await cache.match('/TaskMatrix_Supabase/index.html')) ||
+          (await cache.match('/index.html')) ||
+          (await cache.match('/'))
+        );
+      })
+    );
+    return;
   }
 
   // Everything else: Cache-first, fallback to network

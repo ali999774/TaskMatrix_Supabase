@@ -2396,28 +2396,32 @@
     function handleTaskInfoClick(event, taskId) {
       if (event.target.closest('.date-toggle') ||
           event.target.closest('[id^="datepicker-"]') ||
-          event.target.closest('input[type="date"]') ||
-          (event.target.closest('.task-note-preview') === null &&
-          event.target.closest('.date-toggle') === null && false)) {
+          event.target.closest('input[type="date"]')) {
+        return;
       }
-      if (!event.target.closest('.date-toggle') &&
-          !event.target.closest('[id^="datepicker-"]') &&
-          !event.target.closest('input[type="date"]')) {
-        openTaskModal(taskId)
-      }
+      openTaskModal(taskId);
     }
 
     // ── Sync state ───────────────────────────────────────────────
     let syncStateTimer = null;
+    let currentSyncMode = 'synced';
+    
     function setSyncState(state) {
-      if (state === 'synced') {
-        clearTimeout(syncStateTimer)
-        applyDotState('synced')
+      // Offline overrides everything
+      if (!navigator.onLine) state = 'offline';
+      
+      currentSyncMode = state;
+      clearTimeout(syncStateTimer);
+
+      if (state === 'error' || state === 'offline') {
+        applyDotState(state);
       } else if (state === 'syncing') {
-        applyDotState('syncing')
-      } else {
-        clearTimeout(syncStateTimer)
-        syncStateTimer = setTimeout(() => applyDotState(state), 2000)
+        applyDotState('syncing');
+      } else if (state === 'synced') {
+        // Debounce resolving to green so brief flashes don't hide ongoing errors
+        syncStateTimer = setTimeout(() => {
+          if (currentSyncMode === 'synced') applyDotState('synced');
+        }, 800);
       }
     }
 
@@ -2476,6 +2480,12 @@
     // ── Fix 3: Session health check + auto-recovery ──────────────
     async function handleSupabaseError(err, context) {
       console.error(`[${context}] Supabase error:`, err)
+      if (!navigator.onLine) {
+        setSyncState('offline')
+        return
+      }
+      
+      // If it's a true auth error, re-auth
       if (err?.message?.includes('JWT') ||
           err?.message?.includes('token') ||
           err?.message?.includes('session') ||
@@ -2562,10 +2572,21 @@
               pinned: task.pinned || false
             }
 
-            const { data, error } = await supabaseClient
-              .from('tasks')
-              .upsert(upsertRow, { onConflict: 'id' })
-              .select()
+            let result;
+            if (task.supabaseId) {
+              result = await supabaseClient
+                .from('tasks')
+                .update(upsertRow)
+                .eq('id', task.supabaseId)
+                .select();
+            } else {
+              result = await supabaseClient
+                .from('tasks')
+                .insert([upsertRow])
+                .select();
+            }
+
+            const { data, error } = result;
 
             if (error) {
               console.error('[online] flush failed for:', task.title, error)
@@ -2655,8 +2676,7 @@
 
       try {
         // Fix 1: per-row upsert — no delete+insert
-        const toUpsert = tasks.map(t => ({
-          ...(t.supabaseId ? { id: t.supabaseId } : {}),
+        const toInsert = tasks.filter(t => !t.supabaseId).map(t => ({
           user_id:            currentUser.id,
           title:              t.title,
           notes:              t.notes              || '',
@@ -2674,24 +2694,57 @@
           tags:               t.tags               || [],
           subtasks:           t.subtasks           || [],
           pinned:             t.pinned             || false
-        }))
+        }));
 
-        if (toUpsert.length > 0) {
+        const toUpdate = tasks.filter(t => t.supabaseId).map(t => ({
+          id:                 t.supabaseId,
+          user_id:            currentUser.id,
+          title:              t.title,
+          notes:              t.notes              || '',
+          category:           t.category           || 'personal',
+          importance:         t.importance,
+          urgency:            t.urgency,
+          status:             t.status,
+          due_date:           t.dueDate            || null,
+          due_time:           t.dueTime            || null,
+          estimated_duration: t.estimatedDuration  || null,
+          recurring:          t.recurring          || false,
+          recur_frequency:    t.recurFrequency     || null,
+          recur_interval:     t.recurInterval      || 1,
+          recur_days:         t.recurDays          || [],
+          tags:               t.tags               || [],
+          subtasks:           t.subtasks           || [],
+          pinned:             t.pinned             || false
+        }));
+
+        let allData = [];
+
+        if (toUpdate.length > 0) {
           const { data, error } = await supabaseClient
             .from('tasks')
-            .upsert(toUpsert, { onConflict: 'id' })
-            .select()
-          if (error) throw error
+            .upsert(toUpdate, { onConflict: 'id' })
+            .select();
+          if (error) throw error;
+          if (data) allData.push(...data);
+        }
 
-          // Capture supabaseIds for newly inserted tasks
-          if (data) {
-            data.forEach(row => {
-              const task = tasks.find(t => t.supabaseId === row.id ||
-                (!t.supabaseId && t.title === row.title &&
-                 t.createdAt === row.created_at))
-              if (task) task.supabaseId = row.id
-            })
-          }
+        if (toInsert.length > 0) {
+          const { data, error } = await supabaseClient
+            .from('tasks')
+            .insert(toInsert)
+            .select();
+          if (error) throw error;
+          if (data) allData.push(...data);
+        }
+
+        if (allData.length > 0) {
+          allData.forEach(row => {
+            const task = tasks.find(t => t.supabaseId === row.id ||
+              (!t.supabaseId && t.title === row.title &&
+               t.createdAt === row.created_at));
+            if (task) task.supabaseId = row.id;
+          });
+        }
           
           // Mark as synced locally
           if (db) {
@@ -2703,7 +2756,6 @@
               data: JSON.stringify(t)
             })))
           }
-        }
 
         setSyncState('synced');
       } catch (err) {
