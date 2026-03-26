@@ -2612,6 +2612,14 @@
             console.error('[online] row flush error:', rowErr)
           }
         }
+        
+        // Notes flush
+        const pendingNotes = await db.notes.where('pendingSync').equals(1).toArray()
+        if (pendingNotes.length > 0) {
+           console.log('[online] pending notes:', pendingNotes.length)
+           const latestNotes = pendingNotes.map(row => JSON.parse(row.data))
+           await saveNotesToSupabase(latestNotes)
+        }
       }
 
       await loadTasksFromSupabase()
@@ -2817,6 +2825,30 @@
     async function saveNotesToSupabase(notesArray) {
       if (!currentUser) return;
       setSyncState('syncing');
+
+      // Offline write-through cache integration
+      if (db) {
+        try {
+          await db.notes.clear();
+          if (notesArray.length > 0) {
+            await db.notes.bulkPut(notesArray.map(n => ({
+              localId: n.id,
+              supabaseId: n.supabaseId || null,
+              pendingSync: navigator.onLine ? 0 : 1,
+              updatedAt: new Date().toISOString(),
+              data: JSON.stringify(n)
+            })));
+          }
+        } catch (dexieErr) {
+          console.warn('[saveNotes] Dexie write failed:', dexieErr);
+        }
+      }
+
+      if (!navigator.onLine) {
+        setSyncState('offline');
+        return;
+      }
+
       try {
         await supabaseClient.from('sticky_notes').delete().eq('user_id', currentUser.id);
         if (notesArray.length > 0) {
@@ -2826,6 +2858,7 @@
             color: n.color || 'yellow',
             position_x: n.x || 0,
             position_y: n.y || 0,
+            pinned: n.pinned || false,
             created_at: n.createdAt || new Date().toISOString(),
             updated_at: new Date().toISOString()
           }));
@@ -2859,7 +2892,39 @@
           createdAt: row.created_at,
           modifiedAt: row.updated_at
         }));
+
+        // Update local Dexie notes replica
+        if (db) {
+          try {
+            await db.notes.clear();
+            if (notes.length > 0) {
+               await db.notes.bulkPut(notes.map(n => ({
+                 localId: n.id,
+                 supabaseId: n.supabaseId,
+                 pendingSync: 0,
+                 updatedAt: new Date().toISOString(),
+                 data: JSON.stringify(n)
+               })));
+            }
+          } catch (dexieErr) {
+            console.warn('[loadNotes] Dexie cache update failed:', dexieErr);
+          }
+        }
+
       } catch (err) {
+        console.warn('[loadNotes] Supabase failed, loading from Dexie cache');
+        if (db) {
+          try {
+            const cachedNotes = await db.notes.toArray();
+            if (cachedNotes.length > 0) {
+              notes = cachedNotes.map(row => JSON.parse(row.data));
+              setSyncState('offline');
+              return;
+            }
+          } catch (dexieErr) {
+            console.warn('[loadNotes] Dexie read fallback failed:', dexieErr);
+          }
+        }
         console.error('Notes load error:', err);
       }
     }
