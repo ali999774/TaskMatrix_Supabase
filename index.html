@@ -874,6 +874,11 @@
       pointer-events: auto;
     }
 
+    /* datepicker container must also be clickable despite parent pointer-events:none */
+    .task-info [id^="datepicker-"] {
+      pointer-events: auto;
+    }
+
     .task-title {
       font-weight: 500;
     }
@@ -2654,10 +2659,17 @@
                 } else {
                   // Update supabaseId if this was a new task
                   if (data?.[0]?.id && !task.supabaseId) {
+                    // Patch the in-memory task so a second-save doesn't re-insert
+                    task.supabaseId = data[0].id;
+                    const memTask = tasks.find(t => t.id === task.id);
+                    if (memTask) memTask.supabaseId = data[0].id;
+                    // Store the updated JSON so the supabaseId survives another
+                    // offline → online cycle without duplicating the row
                     await db.tasks.put({
                       ...row,
                       supabaseId: data[0].id,
-                      pendingSync: 0
+                      pendingSync: 0,
+                      data: JSON.stringify(task)
                     })
                   } else {
                     await db.tasks.put({ ...row, pendingSync: 0 })
@@ -2843,7 +2855,9 @@
       }
 
 
-      async function loadTasksFromSupabase() {
+      // silent=true skips sync-dot state changes (used by Realtime handler to avoid
+      // clearing the 800ms green-debounce timer that a concurrent save already started)
+      async function loadTasksFromSupabase(silent = false) {
         if (!currentUser) return;
         // FIX 2: reads do not flash the sync dot orange
         try {
@@ -2861,7 +2875,7 @@
             await db.tasks.bulkPut(tasks.map(t => ({
               localId: t.id,
               supabaseId: t.supabaseId,
-              pendingSync: false,
+              pendingSync: 0,
               updatedAt: new Date().toISOString(),
               data: JSON.stringify(t)
             })))
@@ -2869,7 +2883,7 @@
             console.warn('[loadTasks] Dexie cache update failed:', dexieErr)
           }
 
-          setSyncState('synced');
+          if (!silent) setSyncState('synced');
         } catch (err) {
           // Fix 4: Fall back to Dexie cache on Supabase failure
           console.warn('[loadTasks] Supabase failed, loading from Dexie cache')
@@ -2877,12 +2891,12 @@
             const cached = await db.tasks.toArray()
             if (cached.length > 0) {
               tasks = cached.map(row => JSON.parse(row.data))
-              setSyncState('offline')
+              if (!silent) setSyncState('offline')
             } else {
-              await handleSupabaseError(err, 'loadTasksFromSupabase')
+              if (!silent) await handleSupabaseError(err, 'loadTasksFromSupabase')
             }
           } catch (dexieErr) {
-            await handleSupabaseError(err, 'loadTasksFromSupabase')
+            if (!silent) await handleSupabaseError(err, 'loadTasksFromSupabase')
           }
         }
       }
@@ -2937,6 +2951,7 @@
                 .upsert(toUpdate.map(n => ({
                   id: n.supabaseId,
                   user_id: currentUser.id,
+                  title: n.title || '',
                   content: n.content || '',
                   color: n.color || 'yellow',
                   position_x: n.x || 0,
@@ -2953,6 +2968,7 @@
                 .from('sticky_notes')
                 .insert(toInsert.map(n => ({
                   user_id: currentUser.id,
+                  title: n.title || '',
                   content: n.content || '',
                   color: n.color || 'yellow',
                   position_x: n.x || 0,
@@ -4638,7 +4654,9 @@
               // Debounce to avoid hammering on rapid changes
               clearTimeout(setupRealtime._tasksTimer);
               setupRealtime._tasksTimer = setTimeout(() => {
-                loadTasksFromSupabase().then(() => { render(); renderArchived(); });
+                // silent=true: don't let remote-echo reloads reset the sync dot
+                // state that a concurrent local save may be managing
+                loadTasksFromSupabase(true).then(() => { render(); renderArchived(); });
               }, 500);
             }
           )

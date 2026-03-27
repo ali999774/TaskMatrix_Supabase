@@ -1,11 +1,17 @@
-const CACHE_NAME = 'taskmatrix-v2'; // FIX 3: bumped — forces new SW install
+const CACHE_NAME = 'taskmatrix-v3'; // bumped to force CDN pre-cache on existing installs
 const ASSETS_TO_CACHE = [
-  '/',
   '/TaskMatrix_Supabase/',
   '/TaskMatrix_Supabase/index.html',
   '/TaskMatrix_Supabase/sw.js',
   'https://ali999774.github.io/TaskMatrix_Supabase/',
   'https://ali999774.github.io/TaskMatrix_Supabase/index.html'
+];
+
+// CDN scripts required for the app to function offline.
+// Cached with no-cors so opaque responses are accepted.
+const CDN_ASSETS = [
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+  'https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.js'
 ];
 
 const DB_NAME = 'taskmatrix-offline';
@@ -16,9 +22,21 @@ const STORE_NAME = 'pending-saves';
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
+    caches.open(CACHE_NAME).then(async (cache) => {
       console.log('[SW] Caching app shell');
-      return cache.addAll(ASSETS_TO_CACHE);
+      // Cache local assets individually so one miss doesn't abort the install
+      await Promise.allSettled(
+        ASSETS_TO_CACHE.map(url =>
+          cache.add(url).catch(err => console.warn('[SW] Failed to cache:', url, err))
+        )
+      );
+      // Pre-cache CDN scripts with no-cors (opaque responses are fine for scripts)
+      await Promise.allSettled(
+        CDN_ASSETS.map(url =>
+          cache.add(new Request(url, { mode: 'no-cors' }))
+            .catch(err => console.warn('[SW] Failed to pre-cache CDN:', url, err))
+        )
+      );
     })
   );
 });
@@ -111,10 +129,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Everything else: Cache-first, fallback to network
+  // Everything else: Cache-first, fallback to network and cache the response
+  // so scripts/assets are available on the next offline visit
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) return cachedResponse;
+      return fetch(event.request).then((networkResponse) => {
+        // Only cache valid responses (status 200 or opaque no-cors responses)
+        if (networkResponse && (networkResponse.ok || networkResponse.type === 'opaque')) {
+          const toCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, toCache));
+        }
+        return networkResponse;
+      }).catch(() => new Response('', { status: 503, statusText: 'Offline' }));
     })
   );
 });
