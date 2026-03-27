@@ -2951,7 +2951,6 @@
                 .upsert(toUpdate.map(n => ({
                   id: n.supabaseId,
                   user_id: currentUser.id,
-                  title: n.title || '',
                   content: n.content || '',
                   color: n.color || 'yellow',
                   position_x: n.x || 0,
@@ -2968,7 +2967,6 @@
                 .from('sticky_notes')
                 .insert(toInsert.map(n => ({
                   user_id: currentUser.id,
-                  title: n.title || '',
                   content: n.content || '',
                   color: n.color || 'yellow',
                   position_x: n.x || 0,
