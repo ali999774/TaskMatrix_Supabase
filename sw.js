@@ -1,9 +1,11 @@
-const CACHE_NAME = 'taskmatrix-v1';
+const CACHE_NAME = 'taskmatrix-v2'; // FIX 3: bumped — forces new SW install
 const ASSETS_TO_CACHE = [
   '/',
   '/TaskMatrix_Supabase/',
   '/TaskMatrix_Supabase/index.html',
-  '/TaskMatrix_Supabase/sw.js'
+  '/TaskMatrix_Supabase/sw.js',
+  'https://ali999774.github.io/TaskMatrix_Supabase/',
+  'https://ali999774.github.io/TaskMatrix_Supabase/index.html'
 ];
 
 const DB_NAME = 'taskmatrix-offline';
@@ -75,18 +77,37 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // FIX 3: navigate = cache-first so offline refresh serves the cached shell
+  // rather than going blank when the network fetch fails
   if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request).catch(async () => {
-        const cache = await caches.open(CACHE_NAME);
-        return (
-          (await cache.match(event.request)) ||
-          (await cache.match('/TaskMatrix_Supabase/index.html')) ||
-          (await cache.match('/index.html')) ||
-          (await cache.match('/'))
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      // Try cache first
+      const cached =
+        (await cache.match(event.request)) ||
+        (await cache.match('/TaskMatrix_Supabase/index.html')) ||
+        (await cache.match('https://ali999774.github.io/TaskMatrix_Supabase/index.html')) ||
+        (await cache.match('/'));
+      if (cached) return cached;
+      // Cache miss — try network and cache the response for next time
+      try {
+        const networkResponse = await fetch(event.request);
+        if (networkResponse.ok) {
+          cache.put(event.request, networkResponse.clone());
+        }
+        return networkResponse;
+      } catch {
+        // Fully offline with no cache — return minimal fallback
+        return new Response(
+          '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>TaskMatrix — Offline</title></head>' +
+          '<body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;">' +
+          '<div style="text-align:center;color:#374151;"><div style="font-size:48px;margin-bottom:16px;">📊</div>' +
+          '<h2 style="margin-bottom:8px;">TaskMatrix is offline</h2>' +
+          '<p style="color:#6b7280;">Reconnect to load your tasks.</p></div></body></html>',
+          { status: 200, headers: { 'Content-Type': 'text/html' } }
         );
-      })
-    );
+      }
+    })());
     return;
   }
 
