@@ -2411,7 +2411,18 @@
       // TODO: Replace with your actual Supabase project credentials
       const SUPABASE_URL = 'https://xulnxwwwjpvgsaqnsllo.supabase.co'
       const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1bG54d3d3anB2Z3NhcW5zbGxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMTQwMzYsImV4cCI6MjA4OTc5MDAzNn0.lWoihSm-kv_Ep5fXQZ55H4YU5wXmmKvK4LVLSBIVYic'
-      const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+      // Guard against CDN load failure (offline first visit) — null client is
+      // handled in init() which falls back to Dexie cache instead of crashing.
+      let supabaseClient = null;
+      try {
+        if (window.supabase) {
+          supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        } else {
+          console.warn('[Supabase] library not loaded — offline-only mode active');
+        }
+      } catch (err) {
+        console.warn('[Supabase] createClient failed:', err);
+      }
 
       // ── Fix 4: Dexie.js write-through local cache ─────────────────
       // Wrapped in try/catch — if Dexie CDN failed to load or IndexedDB is
@@ -2468,27 +2479,66 @@
         openTaskModal(taskId);
       }
 
-      // ── Sync state ───────────────────────────────────────────────
-      let syncStateTimer = null;
+      // ── Sync status manager (state machine) ─────────────────────
+      // Single source of truth. All writers call setSyncState(); the
+      // manager ref-counts in-flight operations and resolves priority:
+      //   offline > error > syncing > synced
+      // Green ("synced") transitions are debounced by 2 s to prevent
+      // flicker when multiple async operations race.
       let currentSyncMode = 'synced';
+      let _syncOpsInFlight = 0;
+      let _syncHasError = false;
+      let _syncRealtimeOk = true;
+      let _syncDebounceTimer = null;
+      const SYNC_DEBOUNCE_MS = 2000;
+
+      function _resolveSyncState() {
+        if (!navigator.onLine) return 'offline';
+        if (_syncHasError || !_syncRealtimeOk) return 'error';
+        if (_syncOpsInFlight > 0) return 'syncing';
+        return 'synced';
+      }
+
+      function _flushSyncDisplay() {
+        const next = _resolveSyncState();
+        clearTimeout(_syncDebounceTimer);
+
+        if (next !== 'synced') {
+          currentSyncMode = next;
+          applyDotState(next);
+        } else {
+          // Debounce transitions to green to prevent flicker
+          _syncDebounceTimer = setTimeout(() => {
+            if (_resolveSyncState() === 'synced') {
+              currentSyncMode = 'synced';
+              applyDotState('synced');
+            }
+          }, SYNC_DEBOUNCE_MS);
+        }
+      }
 
       function setSyncState(state) {
-        // Offline overrides everything
         if (!navigator.onLine) state = 'offline';
 
-        currentSyncMode = state;
-        clearTimeout(syncStateTimer);
-
-        if (state === 'error' || state === 'offline') {
-          applyDotState(state);
-        } else if (state === 'syncing') {
-          applyDotState('syncing');
+        if (state === 'syncing') {
+          _syncOpsInFlight++;
+          _syncHasError = false;
         } else if (state === 'synced') {
-          // Debounce resolving to green so brief flashes don't hide ongoing errors
-          syncStateTimer = setTimeout(() => {
-            if (currentSyncMode === 'synced') applyDotState('synced');
-          }, 800);
+          _syncOpsInFlight = Math.max(0, _syncOpsInFlight - 1);
+        } else if (state === 'error') {
+          _syncOpsInFlight = Math.max(0, _syncOpsInFlight - 1);
+          _syncHasError = true;
+        } else if (state === 'offline') {
+          _syncOpsInFlight = 0;
         }
+
+        _flushSyncDisplay();
+      }
+
+      // Called by Realtime subscription status callbacks
+      function setSyncRealtimeConnected(connected) {
+        _syncRealtimeOk = connected;
+        _flushSyncDisplay();
       }
 
       function applyDotState(state) {
@@ -2509,6 +2559,7 @@
 
       // ── Auth helpers ─────────────────────────────────────────────
       async function signInWithGoogle() {
+        if (!supabaseClient) { console.warn('[Auth] Supabase not available'); return; }
         const { error } = await supabaseClient.auth.signInWithOAuth({
           provider: 'google',
           options: { redirectTo: window.location.href }
@@ -2595,14 +2646,28 @@
         document.body.appendChild(banner)
       }
 
-      window.addEventListener('online', async () => {
-        console.log('[online] network restored — starting flush')
+      // ── Offline sync flush ────────────────────────────────────────────
+      // Shared promise prevents concurrent flushes when both the 'online' event
+      // and a Realtime SUBSCRIBED callback fire at the same time.
+      let _flushPromise = null
+
+      function flushPendingSync(source) {
+        if (_flushPromise) {
+          console.log(`[flush:${source}] flush already in progress — coalescing`)
+          return _flushPromise
+        }
+        _flushPromise = _doFlush(source).finally(() => { _flushPromise = null })
+        return _flushPromise
+      }
+
+      async function _doFlush(source) {
+        console.log(`[flush:${source}] starting`)
         setSyncState('syncing')
 
         try {
           const { data: { session } } = await supabaseClient.auth.getSession()
           if (!session) {
-            console.warn('[online] no session — showing sign-in prompt')
+            console.warn(`[flush:${source}] no session — showing sign-in prompt`)
             showSessionExpiredBanner()
             setSyncState('error')
             return
@@ -2611,96 +2676,165 @@
           currentUser = session.user
 
           if (db) {
-            const pending = await db.tasks.where('pendingSync').equals(1).toArray()
-            console.log('[online] pending tasks:', pending.length)
+            // Hold off Realtime overwrites while we push local changes up.
+            // localChangeInFlight is released in the finally block below.
+            localChangeInFlight = true
 
-            for (const row of pending) {
-              try {
-                const task = JSON.parse(row.data)
-                const upsertRow = {
-                  ...(task.supabaseId ? { id: task.supabaseId } : {}),
-                  user_id: currentUser.id,
-                  title: task.title,
-                  notes: task.notes || '',
-                  category: task.category || 'personal',
-                  importance: task.importance,
-                  urgency: task.urgency,
-                  status: task.status,
-                  due_date: task.dueDate || null,
-                  due_time: task.dueTime || null,
-                  estimated_duration: task.estimatedDuration || null,
-                  recurring: task.recurring || false,
-                  recur_frequency: task.recurFrequency || null,
-                  recur_interval: task.recurInterval || 1,
-                  recur_days: task.recurDays || [],
-                  tags: task.tags || [],
-                  subtasks: task.subtasks || [],
-                  pinned: task.pinned || false
-                }
+            try {
+              // ── Task flush ──────────────────────────────────────────
+              const pending = await db.tasks.where('pendingSync').equals(1).toArray()
+              console.log(`[flush:${source}] pending tasks: ${pending.length}`)
 
-                let result;
-                if (task.supabaseId) {
-                  result = await supabaseClient
-                    .from('tasks')
-                    .update(upsertRow)
-                    .eq('id', task.supabaseId)
-                    .select();
-                } else {
-                  result = await supabaseClient
-                    .from('tasks')
-                    .insert([upsertRow])
-                    .select();
-                }
-
-                const { data, error } = result;
-
-                if (error) {
-                  console.error('[online] flush failed for:', task.title, error)
-                } else {
-                  // Update supabaseId if this was a new task
-                  if (data?.[0]?.id && !task.supabaseId) {
-                    // Patch the in-memory task so a second-save doesn't re-insert
-                    task.supabaseId = data[0].id;
-                    const memTask = tasks.find(t => t.id === task.id);
-                    if (memTask) memTask.supabaseId = data[0].id;
-                    // Store the updated JSON so the supabaseId survives another
-                    // offline → online cycle without duplicating the row
-                    await db.tasks.put({
-                      ...row,
-                      supabaseId: data[0].id,
-                      pendingSync: 0,
-                      data: JSON.stringify(task)
-                    })
-                  } else {
-                    await db.tasks.put({ ...row, pendingSync: 0 })
+              for (const row of pending) {
+                try {
+                  const task = JSON.parse(row.data)
+                  const upsertRow = {
+                    ...(task.supabaseId ? { id: task.supabaseId } : {}),
+                    user_id: currentUser.id,
+                    title: task.title,
+                    notes: task.notes || '',
+                    category: task.category || 'personal',
+                    importance: task.importance,
+                    urgency: task.urgency,
+                    status: task.status,
+                    due_date: task.dueDate || null,
+                    due_time: task.dueTime || null,
+                    estimated_duration: task.estimatedDuration || null,
+                    recurring: task.recurring || false,
+                    recur_frequency: task.recurFrequency || null,
+                    recur_interval: task.recurInterval || 1,
+                    recur_days: task.recurDays || [],
+                    tags: task.tags || [],
+                    subtasks: task.subtasks || [],
+                    pinned: task.pinned || false
                   }
-                  console.log('[online] flushed:', task.title)
-                }
-              } catch (rowErr) {
-                console.error('[online] row flush error:', rowErr)
-              }
-            }
 
-            // Notes flush
-            const pendingNotes = await db.notes.where('pendingSync').equals(1).toArray()
-            if (pendingNotes.length > 0) {
-              console.log('[online] pending notes:', pendingNotes.length)
-              const latestNotes = pendingNotes.map(row => JSON.parse(row.data))
-              await saveNotesToSupabase(latestNotes)
+                  let result;
+                  if (task.supabaseId) {
+                    result = await supabaseClient
+                      .from('tasks')
+                      .update(upsertRow)
+                      .eq('id', task.supabaseId)
+                      .select();
+                  } else {
+                    result = await supabaseClient
+                      .from('tasks')
+                      .insert([upsertRow])
+                      .select();
+                  }
+
+                  const { data, error } = result;
+
+                  if (error) {
+                    // Row keeps pendingSync:1 — will retry on next flush
+                    console.error(`[flush:${source}] task FAILED (queued for retry): "${task.title}"`, error)
+                  } else {
+                    // Update supabaseId if this was a new task
+                    if (data?.[0]?.id && !task.supabaseId) {
+                      task.supabaseId = data[0].id;
+                      const memTask = tasks.find(t => t.id === task.id);
+                      if (memTask) memTask.supabaseId = data[0].id;
+                      await db.tasks.put({
+                        ...row,
+                        supabaseId: data[0].id,
+                        pendingSync: 0,
+                        data: JSON.stringify(task)
+                      })
+                    } else {
+                      await db.tasks.put({ ...row, pendingSync: 0 })
+                    }
+                    console.log(`[flush:${source}] task OK: "${task.title}"`)
+                  }
+                } catch (rowErr) {
+                  // Row keeps pendingSync:1 — will retry on next flush
+                  console.error(`[flush:${source}] task row error (queued for retry):`, rowErr)
+                }
+              }
+
+              // ── Notes flush ─────────────────────────────────────────
+              // Push each pending note individually so a Supabase error on one
+              // note leaves it in the retry queue rather than losing it.
+              const pendingNotes = await db.notes.where('pendingSync').equals(1).toArray()
+              console.log(`[flush:${source}] pending notes: ${pendingNotes.length}`)
+
+              for (const noteRow of pendingNotes) {
+                try {
+                  const note = JSON.parse(noteRow.data)
+                  let noteError = null
+
+                  if (note.supabaseId) {
+                    const { error } = await supabaseClient
+                      .from('sticky_notes')
+                      .upsert({
+                        id: note.supabaseId,
+                        user_id: currentUser.id,
+                        content: note.content || '',
+                        color: note.color || 'yellow',
+                        position_x: note.x || 0,
+                        position_y: note.y || 0,
+                        pinned: note.pinned || false,
+                        updated_at: new Date().toISOString()
+                      }, { onConflict: 'id' })
+                    noteError = error
+                  } else {
+                    const { data, error } = await supabaseClient
+                      .from('sticky_notes')
+                      .insert({
+                        user_id: currentUser.id,
+                        content: note.content || '',
+                        color: note.color || 'yellow',
+                        position_x: note.x || 0,
+                        position_y: note.y || 0,
+                        pinned: note.pinned || false,
+                        created_at: note.createdAt || new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                      })
+                      .select()
+                    noteError = error
+                    if (!error && data?.[0]?.id) {
+                      note.supabaseId = data[0].id
+                      const memNote = (typeof notes !== 'undefined' ? notes : []).find(n => n.id === note.id)
+                      if (memNote) memNote.supabaseId = data[0].id
+                    }
+                  }
+
+                  if (noteError) {
+                    // noteRow keeps pendingSync:1 — will retry on next flush
+                    console.error(`[flush:${source}] note FAILED (queued for retry): id=${note.id}`, noteError)
+                  } else {
+                    await db.notes.put({
+                      ...noteRow,
+                      supabaseId: note.supabaseId || null,
+                      pendingSync: 0,
+                      data: JSON.stringify(note)
+                    })
+                    console.log(`[flush:${source}] note OK: id=${note.id}`)
+                  }
+                } catch (noteRowErr) {
+                  // noteRow keeps pendingSync:1 — will retry on next flush
+                  console.error(`[flush:${source}] note row error (queued for retry):`, noteRowErr)
+                }
+              }
+            } finally {
+              localChangeInFlight = false
             }
           }
 
+          // Pull fresh server state only after all local changes have been pushed
           await loadTasksFromSupabase()
           render()
           if (typeof updateStatsDisplay === 'function') updateStatsDisplay()
           setSyncState('synced')
-          console.log('[online] flush complete')
+          console.log(`[flush:${source}] complete`)
 
         } catch (err) {
-          console.error('[online] flush handler error:', err)
+          localChangeInFlight = false
+          console.error(`[flush:${source}] handler error:`, err)
           setSyncState('error')
         }
-      })
+      }
+
+      window.addEventListener('online', () => flushPendingSync('online'))
 
       window.addEventListener('offline', () => {
         setSyncState('offline')
@@ -3131,6 +3265,27 @@
         // Default sync dot to synced (green)
         setSyncState('synced');
         // Hide app until auth is confirmed
+
+        // Supabase CDN failed to load (e.g. offline first visit) — try Dexie boot
+        if (!supabaseClient) {
+          setSyncState('offline');
+          if (db) {
+            try {
+              const cachedTasks = await db.tasks.toArray();
+              const cachedNotes = await db.notes.toArray();
+              if (cachedTasks.length > 0 || cachedNotes.length > 0) {
+                tasks = cachedTasks.map(r => JSON.parse(r.data));
+                notes = cachedNotes.map(r => JSON.parse(r.data));
+                hideAuthScreen();
+                render(); renderNotes(); renderPinnedNotes();
+                window.addEventListener('online', () => { location.reload(); }, { once: true });
+                return;
+              }
+            } catch (e) { console.warn('[init] Dexie boot (no-supabase) failed:', e); }
+          }
+          showAuthScreen();
+          return;
+        }
         showAuthScreen();
 
         try {
@@ -3197,7 +3352,7 @@
           setSyncState('error');
         }
 
-        supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        supabaseClient?.auth.onAuthStateChange(async (event, session) => {
           if (event === 'SIGNED_IN' && session) {
             currentUser = session.user;
             hideAuthScreen();
@@ -4640,6 +4795,11 @@
 
       // ── Realtime subscriptions ────────────────────────────────────
       function setupRealtime(userId) {
+        // Track whether each channel has connected at least once so we can
+        // distinguish initial connect (no flush needed) from reconnect (flush first).
+        let _tasksChannelReady = false;
+        let _notesChannelReady = false;
+
         supabaseClient
           .channel('tasks-changes')
           .on('postgres_changes',
@@ -4658,7 +4818,20 @@
               }, 500);
             }
           )
-          .subscribe();
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              if (_tasksChannelReady) {
+                // Reconnect — flush pending local changes before pulling server state
+                console.log('[realtime] tasks channel reconnected — flushing')
+                flushPendingSync('realtime-tasks')
+              }
+              _tasksChannelReady = true
+              setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady)
+            } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+              _tasksChannelReady = false
+              setSyncRealtimeConnected(false)
+            }
+          });
 
         supabaseClient
           .channel('notes-changes')
@@ -4674,7 +4847,19 @@
               }, 500);
             }
           )
-          .subscribe();
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+              if (_notesChannelReady) {
+                console.log('[realtime] notes channel reconnected — flushing')
+                flushPendingSync('realtime-notes')
+              }
+              _notesChannelReady = true
+              setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady)
+            } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+              _notesChannelReady = false
+              setSyncRealtimeConnected(false)
+            }
+          });
       }
 
       function renderTags() {
