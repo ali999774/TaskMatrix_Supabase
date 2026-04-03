@@ -2915,7 +2915,7 @@
               id: t.supabaseId,
               user_id: currentUser.id,
               title: t.title,
-              notes: t.notes || '',
+              notes: t.notes || '',          // ← notes always included
               category: t.category || 'personal',
               importance: t.importance,
               urgency: t.urgency,
@@ -2929,17 +2929,23 @@
               recur_days: t.recurDays || [],
               tags: t.tags || [],
               subtasks: t.subtasks || [],
-              pinned: t.pinned || false
+              pinned: t.pinned || false,
+              updated_at: new Date().toISOString() // ← FIX: include timestamp so Supabase actually writes the row
             }));
 
             let allData = [];
 
             if (toUpdate.length > 0) {
+              console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
               const { data, error } = await supabaseClient
                 .from('tasks')
                 .upsert(toUpdate, { onConflict: 'id' })
                 .select();
-              if (error) throw error;
+              if (error) {
+                console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
+                throw error;
+              }
+              console.log('[saveTasks] upsert OK — rows returned:', data?.length);
               if (data) allData.push(...data);
             }
 
@@ -4622,7 +4628,10 @@
         document.getElementById('weekdays-input').style.display = frequency === 'weekly' ? 'block' : 'none';
       }
 
-      function saveTaskDetails() {
+      // FIX: async so we await saveTasks() — prevents Realtime from
+      // overwriting in-memory state before the write confirms, and
+      // keeps localChangeInFlight=true for the full save duration.
+      async function saveTaskDetails() {
         const title = document.getElementById('modal-title').value.trim();
         if (!title) return alert('Please enter a task title');
 
@@ -4664,10 +4673,13 @@
           tasks.push(newTask);
         }
 
-        saveTasks();
+        // FIX: close modal immediately so user isn't blocked, but
+        // await saveTasks() so localChangeInFlight covers the whole write.
+        // Realtime debounce (500ms) can't fire until after the await resolves.
         render();
         updateStatsDisplay();
         closeTaskModal();
+        await saveTasks();
       }
 
       async function deleteTaskFromModal() {
