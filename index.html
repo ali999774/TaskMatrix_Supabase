@@ -813,10 +813,11 @@
       border-radius: 8px;
       border-left: 4px solid;
       margin-bottom: 8px;
-      cursor: move;
+      cursor: pointer;
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
       position: relative;
       color: var(--text-primary);
+      touch-action: manipulation;
     }
 
     .task.work {
@@ -2464,6 +2465,38 @@
       const _pulseStyle = document.createElement('style');
       _pulseStyle.textContent = `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`;
       document.head.appendChild(_pulseStyle);
+
+      // Track touch start time/position so we can distinguish a tap from a drag
+      let _touchStartTime = 0;
+      let _touchStartX = 0;
+      let _touchStartY = 0;
+
+      function handleTaskTouchStart(event, taskId) {
+        _touchStartTime = Date.now();
+        _touchStartX = event.touches[0].clientX;
+        _touchStartY = event.touches[0].clientY;
+      }
+
+      function handleTaskTouchEnd(event, taskId) {
+        const elapsed = Date.now() - _touchStartTime;
+        const dx = Math.abs(event.changedTouches[0].clientX - _touchStartX);
+        const dy = Math.abs(event.changedTouches[0].clientY - _touchStartY);
+        // Only treat as a tap if: short press (<300ms), minimal movement (<10px)
+        // and the touch didn't land on a button or interactive badge
+        if (elapsed < 300 && dx < 10 && dy < 10) {
+          const target = event.target;
+          if (target && typeof target.closest === 'function') {
+            if (target.closest('button') ||
+                target.closest('.date-toggle') ||
+                target.closest('[id^="datepicker-"]') ||
+                target.closest('input')) {
+              return;
+            }
+          }
+          event.preventDefault(); // prevent the subsequent click event from also firing
+          openTaskModal(taskId);
+        }
+      }
 
       function handleTaskInfoClick(event, taskId) {
         const target = event.target;
@@ -4276,7 +4309,7 @@
                 </div>`
                 : '';
               const taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
-              return `<div class="task ${task.category} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()" onclick="handleTaskInfoClick(event, ${task.id})">
+              return `<div class="task ${task.category} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()" onclick="handleTaskInfoClick(event, ${task.id})" ontouchstart="handleTaskTouchStart(event, ${task.id})" ontouchend="handleTaskTouchEnd(event, ${task.id})">
               <div class="task-content">
                 <button class="icon-btn" onclick="event.stopPropagation(); toggleTaskStatus(${task.id})" style="color:${statusColor}; font-size:20px;">${statusIcon}</button>
                 <div class="task-info">
