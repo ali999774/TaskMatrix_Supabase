@@ -2876,7 +2876,7 @@
       // ── Fix 4: mapRowToTask helper ────────────────────────────────
       function mapRowToTask(row) {
         return {
-          id: Date.now() + Math.random(),
+          id: tasks.find(t => t.supabaseId === row.id)?.id ?? (Date.now() + Math.random()),
           supabaseId: row.id,
           title: row.title,
           notes: row.notes,
