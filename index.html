@@ -2948,6 +2948,7 @@
               pinned: t.pinned || false
             }));
 
+            console.log('[DEBUG 2] saveTasks — tasks going into toUpdate:', tasks.filter(t => t.supabaseId).map(t => ({ id: t.id, supabaseId: t.supabaseId, notes: t.notes })));
             const toUpdate = tasks.filter(t => t.supabaseId).map(t => ({
               id: t.supabaseId,
               user_id: currentUser.id,
@@ -2975,15 +2976,18 @@
             if (toUpdate.length > 0) {
               console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
               const toUpdatePayload = toUpdate.map(({ id: _excluded, ...rest }) => rest);
+              console.log('[DEBUG 3] toUpdatePayload — id present?', toUpdatePayload.some(r => 'id' in r), '— first row notes:', JSON.stringify(toUpdatePayload[0]?.notes), '— first row keys:', Object.keys(toUpdatePayload[0] || {}));
               const { data, error } = await supabaseClient
                 .from('tasks')
                 .upsert(toUpdatePayload, { onConflict: 'id' })
                 .select();
               if (error) {
                 console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
+                console.error('[DEBUG 4] full error object:', JSON.stringify(error));
                 throw error;
               }
               console.log('[saveTasks] upsert OK — rows returned:', data?.length);
+              console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(data?.[0]?.notes));
               if (data) allData.push(...data);
             }
 
@@ -3046,6 +3050,7 @@
             .order('created_at', { ascending: true });
           if (error) throw error;
 
+          console.log('[DEBUG 5] loadTasksFromSupabase — raw notes from Supabase for each task:', data.map(r => ({ supabaseId: r.id, title: r.title, notes: r.notes })));
           tasks = data.map(mapRowToTask);
 
           // Fix 4: Update Dexie cache with fresh data
@@ -4699,9 +4704,11 @@
           });
         }
 
+        console.log('[DEBUG 1] saveTaskDetails — notes from textarea:', JSON.stringify(taskData.notes));
         if (currentEditingTask) {
           Object.assign(currentEditingTask, taskData);
           currentEditingTask.modifiedAt = new Date().toISOString();
+          console.log('[DEBUG 1] currentEditingTask after assign — notes:', JSON.stringify(currentEditingTask.notes), 'supabaseId:', currentEditingTask.supabaseId);
         } else {
           const newTask = {
             id: Date.now(),
