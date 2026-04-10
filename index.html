@@ -1235,7 +1235,6 @@
     }
 
     /* Note Edit Modal */
-    .modal-overlay,
     .note-edit-modal {
       position: fixed;
       top: 0;
@@ -1253,7 +1252,6 @@
       transition: opacity 0.2s;
     }
 
-    .modal-overlay.active,
     .note-edit-modal.active {
       opacity: 1;
       pointer-events: auto;
@@ -1403,10 +1401,14 @@
       justify-content: center;
       z-index: 1000;
       padding: 16px;
+      opacity: 0;
+      pointer-events: none;
     }
 
     .modal-overlay.active {
       display: flex;
+      opacity: 1;
+      pointer-events: auto;
     }
 
     .modal {
@@ -2234,10 +2236,11 @@
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Task Modal -->
-    <div class="modal-overlay" id="task-modal" onclick="closeModalOnOverlay(event)">
-      <div class="modal" onclick="event.stopPropagation()">
+  <!-- Task Modal -->
+  <div class="modal-overlay" id="task-modal" onclick="closeModalOnOverlay(event)">
+    <div class="modal" onclick="event.stopPropagation()">
         <div class="modal-header">
           <h2 class="modal-title" id="modal-main-title">Add Task</h2>
           <button class="modal-close" onclick="closeTaskModal()">×</button>
@@ -2405,7 +2408,7 @@
           </div>
         </div>
       </div>
-    </div>
+  </div>
 
     <script>
       // ── Supabase Config ──────────────────────────────────────────
