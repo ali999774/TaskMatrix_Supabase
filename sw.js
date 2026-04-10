@@ -1,4 +1,4 @@
-const CACHE_NAME = 'taskmatrix-v3'; // bumped to force CDN pre-cache on existing installs
+const CACHE_NAME = 'taskmatrix-v4'; // bumped to bust stale index.html cache
 const ASSETS_TO_CACHE = [
   '/TaskMatrix_Supabase/',
   '/TaskMatrix_Supabase/index.html',
@@ -95,19 +95,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // FIX 3: navigate = cache-first so offline refresh serves the cached shell
-  // rather than going blank when the network fetch fails
+  // navigate = network-first so deployments are always picked up immediately.
+  // Only fall back to cache when truly offline.
   if (event.request.mode === 'navigate') {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);
-      // Try cache first
-      const cached =
-        (await cache.match(event.request)) ||
-        (await cache.match('/TaskMatrix_Supabase/index.html')) ||
-        (await cache.match('https://ali999774.github.io/TaskMatrix_Supabase/index.html')) ||
-        (await cache.match('/'));
-      if (cached) return cached;
-      // Cache miss — try network and cache the response for next time
+      // Try network first — always get the latest index.html
       try {
         const networkResponse = await fetch(event.request);
         if (networkResponse.ok) {
@@ -115,6 +108,13 @@ self.addEventListener('fetch', (event) => {
         }
         return networkResponse;
       } catch {
+        // Offline — serve cached shell
+        const cached =
+          (await cache.match(event.request)) ||
+          (await cache.match('/TaskMatrix_Supabase/index.html')) ||
+          (await cache.match('https://ali999774.github.io/TaskMatrix_Supabase/index.html')) ||
+          (await cache.match('/'));
+        if (cached) return cached;
         // Fully offline with no cache — return minimal fallback
         return new Response(
           '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>TaskMatrix — Offline</title></head>' +
