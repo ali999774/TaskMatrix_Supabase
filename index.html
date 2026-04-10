@@ -2974,9 +2974,10 @@
 
             if (toUpdate.length > 0) {
               console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
+              const toUpdatePayload = toUpdate.map(({ id: _excluded, ...rest }) => rest);
               const { data, error } = await supabaseClient
                 .from('tasks')
-                .upsert(toUpdate, { onConflict: 'id' })
+                .upsert(toUpdatePayload, { onConflict: 'id' })
                 .select();
               if (error) {
                 console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
