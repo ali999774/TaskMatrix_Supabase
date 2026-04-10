@@ -4555,6 +4555,7 @@
 
         document.getElementById('task-modal').classList.add('active');
         document.body.style.overflow = 'hidden';
+        _modalOpenedAt = Date.now();
       }
 
       let recognition = null;
@@ -4637,8 +4638,10 @@
         currentEditingTask = null;
       }
 
+      let _modalOpenedAt = 0;
+
       function closeModalOnOverlay(event) {
-        if (event.target.id === 'task-modal') closeTaskModal();
+        if (event.target.id === 'task-modal' && Date.now() - _modalOpenedAt > 300) closeTaskModal();
       }
 
       function updateSliderValue(type) {
