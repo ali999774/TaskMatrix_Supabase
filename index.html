@@ -2747,9 +2747,10 @@
 
                   let result;
                   if (task.supabaseId) {
+                    const { id: _excluded, ...updatePayload } = upsertRow;
                     result = await supabaseClient
                       .from('tasks')
-                      .update(upsertRow)
+                      .update(updatePayload)
                       .eq('id', task.supabaseId)
                       .select();
                   } else {
