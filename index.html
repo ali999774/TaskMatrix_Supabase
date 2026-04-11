@@ -3586,7 +3586,7 @@
           const preview = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
           const timeAgo = getTimeAgo(note.modifiedAt);
           return `
-          <div class="note-card ${note.color}" onclick="editNote(${note.id})">
+          <div class="note-card ${note.color}" onclick="editNote('${note.id}')">
             <div class="note-card-header">${note.title || 'Untitled'}</div>
             <div class="note-card-content">${preview || 'Empty note'}</div>
             <div class="note-card-footer">${timeAgo}</div>
@@ -3609,7 +3609,7 @@
         grid.innerHTML = pinnedNotes.map(note => {
           const preview = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
           return `
-          <div class="note-card ${note.color}" onclick="editNote(${note.id})">
+          <div class="note-card ${note.color}" onclick="editNote('${note.id}')">
             <div class="note-card-header">
               <span>${note.title || 'Untitled'}</span>
               <span style="font-size: 12px;">📌</span>
