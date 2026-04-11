@@ -3137,7 +3137,6 @@
                   position_x: n.x || 0,
                   position_y: n.y || 0,
                   pinned: n.pinned || false,
-                  created_at: n.createdAt || new Date().toISOString(),
                   updated_at: new Date().toISOString()
                 })), { onConflict: 'id' });
               if (error) throw error;
