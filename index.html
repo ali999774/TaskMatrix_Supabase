@@ -2198,41 +2198,41 @@
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Note Edit Modal -->
-    <div class="note-edit-modal" id="note-edit-modal" onclick="closeNoteEditModalOnOverlay(event)">
-      <div class="note-edit-container" onclick="event.stopPropagation()">
-        <div class="note-edit-header">
-          <h2 style="font-size: 20px; font-weight: bold;">Edit Note</h2>
-          <button class="modal-close" onclick="closeNoteEditModal()">×</button>
+  <!-- Note Edit Modal -->
+  <div class="note-edit-modal" id="note-edit-modal" onclick="closeNoteEditModalOnOverlay(event)">
+    <div class="note-edit-container" onclick="event.stopPropagation()">
+      <div class="note-edit-header">
+        <h2 style="font-size: 20px; font-weight: bold;">Edit Note</h2>
+        <button class="modal-close" onclick="closeNoteEditModal()">×</button>
+      </div>
+      <div class="note-edit-body">
+        <input type="text" id="note-title-input" class="note-title-input" placeholder="📌 Note title (with emoji)...">
+        <textarea id="note-content-input" class="note-content-input" placeholder="Write your note here..."></textarea>
+        <div class="color-picker">
+          <span class="color-picker-label">Color:</span>
+          <div class="color-option yellow" onclick="selectNoteColor('yellow')"></div>
+          <div class="color-option pink" onclick="selectNoteColor('pink')"></div>
+          <div class="color-option blue" onclick="selectNoteColor('blue')"></div>
+          <div class="color-option green" onclick="selectNoteColor('green')"></div>
+          <div class="color-option purple" onclick="selectNoteColor('purple')"></div>
         </div>
-        <div class="note-edit-body">
-          <input type="text" id="note-title-input" class="note-title-input" placeholder="📌 Note title (with emoji)...">
-          <textarea id="note-content-input" class="note-content-input" placeholder="Write your note here..."></textarea>
-          <div class="color-picker">
-            <span class="color-picker-label">Color:</span>
-            <div class="color-option yellow" onclick="selectNoteColor('yellow')"></div>
-            <div class="color-option pink" onclick="selectNoteColor('pink')"></div>
-            <div class="color-option blue" onclick="selectNoteColor('blue')"></div>
-            <div class="color-option green" onclick="selectNoteColor('green')"></div>
-            <div class="color-option purple" onclick="selectNoteColor('purple')"></div>
-          </div>
-          <div class="note-info">
-            <div>Created: <span id="note-created-date">-</span></div>
-            <div>Last edited: <span id="note-edited-date">-</span></div>
-          </div>
-          <div style="margin-top: 16px; display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" id="note-pinned-input" style="width: 16px; height: 16px; cursor: pointer;">
-            <label for="note-pinned-input" style="cursor: pointer; font-size: 14px; color: var(--text-secondary);">Pin
-              this note to dashboard</label>
-          </div>
+        <div class="note-info">
+          <div>Created: <span id="note-created-date">-</span></div>
+          <div>Last edited: <span id="note-edited-date">-</span></div>
         </div>
-        <div class="note-edit-footer">
-          <button class="btn btn-red" onclick="deleteCurrentNote()">🗑️ Delete</button>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-success" onclick="convertNoteToTask()">➕ Convert to Task</button>
-            <button class="btn btn-primary" onclick="saveCurrentNote()">Save</button>
-          </div>
+        <div style="margin-top: 16px; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="note-pinned-input" style="width: 16px; height: 16px; cursor: pointer;">
+          <label for="note-pinned-input" style="cursor: pointer; font-size: 14px; color: var(--text-secondary);">Pin
+            this note to dashboard</label>
+        </div>
+      </div>
+      <div class="note-edit-footer">
+        <button class="btn btn-red" onclick="deleteCurrentNote()">🗑️ Delete</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-success" onclick="convertNoteToTask()">➕ Convert to Task</button>
+          <button class="btn btn-primary" onclick="saveCurrentNote()">Save</button>
         </div>
       </div>
     </div>
