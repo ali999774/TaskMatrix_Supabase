@@ -2434,9 +2434,15 @@
       let db = null
       try {
         db = new Dexie('taskmatrix')
+        // BUG 3 FIX: bump to version 2 to add deletedTasks table
         db.version(1).stores({
           tasks: 'localId, supabaseId, updatedAt, pendingSync',
           notes: 'localId, supabaseId, updatedAt, pendingSync'
+        })
+        db.version(2).stores({
+          tasks: 'localId, supabaseId, updatedAt, pendingSync',
+          notes: 'localId, supabaseId, updatedAt, pendingSync',
+          deletedTasks: 'id, deleted_at'  // BUG 3: ghost-task tombstone store
         })
       } catch (dexieInitErr) {
         console.warn('[Dexie] init failed — offline cache disabled:', dexieInitErr)
@@ -3141,7 +3147,11 @@
                   pinned: n.pinned || false,
                   updated_at: new Date().toISOString()
                 })), { onConflict: 'id' });
-              if (error) throw error;
+              // BUG 1 FIX: make Supabase note upsert failures visible in DevTools
+              if (error) {
+                console.error('[saveNotes] Supabase upsert FAILED — notes remain in Dexie (pendingSync:1):', error);
+                throw error;
+              }
             }
 
             if (toInsert.length > 0) {
@@ -3942,6 +3952,14 @@
         const task = tasks.find(t => t.id === id);
         if (!task) return;
         if (confirm('Delete this task?')) {
+          // BUG 3 FIX: write tombstone to deletedTasks BEFORE attempting server delete
+          // so that any Realtime INSERT echo is filtered out even if the delete races
+          if (db && task.supabaseId) {
+            try {
+              await db.deletedTasks.put({ id: task.supabaseId, deleted_at: new Date().toISOString() });
+            } catch (e) { console.warn('[deleteTask] deletedTasks tombstone write failed:', e); }
+          }
+
           // Fix 1: immediate targeted DELETE by supabaseId
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
@@ -3952,8 +3970,13 @@
                 .eq('id', task.supabaseId)
               if (error) throw error
               setSyncState('synced')
+              // BUG 3 FIX: server confirmed delete — remove tombstone (it's safely gone)
+              if (db) {
+                try { await db.deletedTasks.delete(task.supabaseId); } catch (e) { }
+              }
             } catch (err) {
               await handleSupabaseError(err, 'deleteTask')
+              // tombstone stays in deletedTasks so ghost won't re-appear on reconnect
             }
           }
           // Also remove from Dexie cache
@@ -4755,6 +4778,13 @@
         if (!currentEditingTask) return;
         if (confirm('Delete this task?')) {
           const task = currentEditingTask;
+          // BUG 3 FIX: write tombstone BEFORE server delete
+          if (db && task.supabaseId) {
+            try {
+              await db.deletedTasks.put({ id: task.supabaseId, deleted_at: new Date().toISOString() });
+            } catch (e) { console.warn('[deleteTaskFromModal] deletedTasks tombstone write failed:', e); }
+          }
+
           // Fix 1: immediate targeted DELETE by supabaseId
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
@@ -4765,8 +4795,13 @@
                 .eq('id', task.supabaseId)
               if (error) throw error
               setSyncState('synced')
+              // BUG 3 FIX: server confirmed delete — remove tombstone
+              if (db) {
+                try { await db.deletedTasks.delete(task.supabaseId); } catch (e) { }
+              }
             } catch (err) {
               await handleSupabaseError(err, 'deleteTaskFromModal')
+              // tombstone stays so ghost won't resurface
             }
           }
           // Also remove from Dexie cache
@@ -4908,8 +4943,21 @@
               event: '*', schema: 'public', table: 'tasks',
               filter: `user_id=eq.${userId}`
             },
-            (payload) => {
+            async (payload) => {
               if (localChangeInFlight) return;
+
+              // BUG 3 FIX: on INSERT, check if this task was locally deleted (tombstone)
+              // If so, skip it — it was deleted locally and the server is just echoing back
+              if (payload.eventType === 'INSERT' && payload.new && db) {
+                try {
+                  const wasDeleted = await db.deletedTasks.get(payload.new.id);
+                  if (wasDeleted) {
+                    console.log('[realtime] ghost task INSERT suppressed (tombstone hit):', payload.new.id);
+                    return; // skip — do not re-add this task
+                  }
+                } catch (e) { /* non-fatal */ }
+              }
+
               // Debounce to avoid hammering on rapid changes
               clearTimeout(setupRealtime._tasksTimer);
               setupRealtime._tasksTimer = setTimeout(() => {
@@ -4999,8 +5047,35 @@
 
         // BUG FIX 3: On tab visibility change (sleep/wake), check channel health
         // and reconnect if the OS dropped the socket while the tab was hidden.
-        document.addEventListener('visibilitychange', () => {
+        // BUG 2 FIX: also validate the auth session so a silently-expired token
+        // is refreshed before the next write attempt (prevents orange dot after idle).
+        document.addEventListener('visibilitychange', async () => {
           if (!document.hidden) {
+            // BUG 2 FIX: validate session every time the tab comes back into focus
+            if (supabaseClient) {
+              try {
+                const { data } = await supabaseClient.auth.getSession();
+                if (!data.session) {
+                  // Session expired while tab was hidden — attempt silent refresh
+                  console.log('[auth] no session on tab focus — attempting refresh');
+                  const { error: refreshError } = await supabaseClient.auth.refreshSession();
+                  if (refreshError) {
+                    console.warn('[auth] refresh failed on tab focus:', refreshError);
+                    showSessionExpiredBanner();
+                  } else {
+                    console.log('[auth] session refreshed successfully on tab focus');
+                    setSyncState('synced');
+                  }
+                } else {
+                  // Session is still valid — update currentUser in case it changed
+                  currentUser = data.session.user;
+                }
+              } catch (e) {
+                console.warn('[auth] getSession failed on tab focus:', e);
+              }
+            }
+
+            // Reconnect Realtime channels if they dropped while tab was hidden
             const tasksState = tasksChannel.state;
             const notesState = notesChannel.state;
             if (tasksState !== 'joined' && tasksState !== 'joining') {
