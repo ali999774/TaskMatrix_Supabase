@@ -2911,9 +2911,10 @@
             console.warn('[saveTasks] No currentUser — skipping save');
             return;
           }
-          setSyncState('syncing');
+          // BUG FIX 2: Do NOT set 'syncing' (orange dot) here. Dexie write below
+          // already persists data safely. Orange only appears if Supabase fails.
 
-          // Fix 4: Write to Dexie first (always succeeds offline)
+          // Write to Dexie first (always succeeds offline)
           try {
             await db.tasks.bulkPut(tasks.map(t => ({
               localId: t.id,
@@ -2968,7 +2969,7 @@
               tags: t.tags || [],
               subtasks: t.subtasks || [],
               pinned: t.pinned || false,
-              updated_at: new Date().toISOString() // ← FIX: include timestamp so Supabase actually writes the row
+              updated_at: new Date().toISOString() // ← include timestamp so Supabase actually writes the row
             }));
 
             let allData = [];
@@ -3019,11 +3020,11 @@
             }
 
             setSyncState('synced');
-            saveRetryCount = 0; // FIX 2: reset retry counter on success
+            saveRetryCount = 0; // reset retry counter on success
             clearTimeout(saveRetryTimer);
           } catch (err) {
+            // BUG FIX 2: Orange dot only on actual Supabase failure (not on write start)
             await handleSupabaseError(err, 'saveTasks');
-            // FIX 2: schedule retry if online but save failed (e.g. JWT blip)
             if (navigator.onLine && saveRetryCount < SAVE_RETRY_DELAYS.length) {
               const delay = SAVE_RETRY_DELAYS[saveRetryCount++];
               console.log(`[saveTasks] scheduling retry #${saveRetryCount} in ${delay}ms`);
@@ -3084,10 +3085,9 @@
 
       async function saveNotesToSupabase(notesArray) {
         if (!currentUser) return;
-        // FIX 2: only writes show the orange dot
-        setSyncState('syncing');
-
-        // Offline write-through cache integration
+        // BUG FIX 4: Write to Dexie FIRST (data is safe locally regardless of network).
+        // Always mark pendingSync:1 here; clear it to 0 only after Supabase succeeds.
+        // Do NOT set orange dot before write — only on Supabase failure.
         if (db) {
           try {
             await db.notes.clear();
@@ -3095,7 +3095,7 @@
               await db.notes.bulkPut(notesArray.map(n => ({
                 localId: n.id,
                 supabaseId: n.supabaseId || null,
-                pendingSync: navigator.onLine ? 0 : 1,
+                pendingSync: 1, // always 1 until Supabase confirms
                 updatedAt: new Date().toISOString(),
                 data: JSON.stringify(n)
               })));
@@ -3111,7 +3111,7 @@
         }
 
         try {
-          // FIX 4: NEVER nuke the whole table. Delete only explicitly removed notes,
+          // NEVER nuke the whole table. Delete only explicitly removed notes,
           // then upsert/insert the rest individually.
           if (pendingNoteDeletes.length > 0) {
             const { error: delErr } = await supabaseClient
@@ -3164,7 +3164,7 @@
                   const match = toInsert[i];
                   if (match) {
                     match.supabaseId = row.id;
-                    match.id = row.id; // FIX 4: stable UUID id going forward
+                    match.id = row.id; // stable UUID id going forward
                   }
                 });
                 // Refresh Dexie with now-stable IDs
@@ -3185,8 +3185,27 @@
               }
             }
           }
+          // BUG FIX 4: Supabase succeeded — clear pendingSync in Dexie and keep dot green
+          if (db) {
+            try {
+              await db.notes.clear();
+              if (notesArray.length > 0) {
+                await db.notes.bulkPut(notesArray.map(n => ({
+                  localId: n.id,
+                  supabaseId: n.supabaseId || null,
+                  pendingSync: 0,
+                  updatedAt: new Date().toISOString(),
+                  data: JSON.stringify(n)
+                })));
+              }
+            } catch (dexieErr) {
+              console.warn('[saveNotes] Dexie sync-clear failed:', dexieErr);
+            }
+          }
           setSyncState('synced');
         } catch (err) {
+          // BUG FIX 4: Only go orange/red on actual Supabase failure.
+          // Dexie already has the note with pendingSync:1 — it will retry on reconnect.
           console.error('Notes save error:', err);
           setSyncState('error');
         }
@@ -3472,14 +3491,16 @@
           const text = input.value.trim();
           if (!text) return;
           const newTaskCategory = activeContext === 'all' ? 'personal' : activeContext;
+          // BUG FIX 1: Default to Do First (importance:5, urgency:5) instead of
+          // importance:3/urgency:3 which maps to Eliminate via getQuad().
           const newTask = {
             id: Date.now(),
             title: text,
             category: newTaskCategory,
             status: 'todo',
             dueDate: null,
-            importance: 3,
-            urgency: 3,
+            importance: 5,
+            urgency: 5,
             notes: '',
             tags: [],
             subtasks: [],
@@ -4852,13 +4873,33 @@
       }
 
       // ── Realtime subscriptions ────────────────────────────────────
+      // BUG FIX 3: Keepalive interval — pings Supabase every 30 s to prevent
+      // the WebSocket from going idle and being silently dropped by the network.
+      let _keepaliveInterval = null;
+
+      function startKeepalive() {
+        if (_keepaliveInterval) clearInterval(_keepaliveInterval);
+        _keepaliveInterval = setInterval(async () => {
+          if (!supabaseClient || !navigator.onLine) return;
+          try {
+            await supabaseClient.from('tasks').select('id').limit(1);
+          } catch (e) {
+            // silent — keepalive failure is not user-visible
+          }
+        }, 30000); // 30 seconds
+      }
+
       function setupRealtime(userId) {
         // Track whether each channel has connected at least once so we can
         // distinguish initial connect (no flush needed) from reconnect (flush first).
         let _tasksChannelReady = false;
         let _notesChannelReady = false;
 
-        supabaseClient
+        // BUG FIX 3: Hold channel refs so we can re-subscribe on CLOSED/CHANNEL_ERROR
+        let _tasksRetryTimer = null;
+        let _notesRetryTimer = null;
+
+        const tasksChannel = supabaseClient
           .channel('tasks-changes')
           .on('postgres_changes',
             {
@@ -4885,13 +4926,32 @@
               }
               _tasksChannelReady = true
               setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady)
+              // BUG FIX 3: Start keepalive after first successful subscription
+              startKeepalive();
             } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-              _tasksChannelReady = false
-              setSyncRealtimeConnected(false)
+              // BUG FIX 3: Retry once after 2 s before marking as disconnected
+              console.warn('[realtime] tasks channel ' + status + ' — scheduling retry')
+              clearTimeout(_tasksRetryTimer);
+              _tasksRetryTimer = setTimeout(() => {
+                const state = tasksChannel.state;
+                if (state !== 'joined' && state !== 'joining') {
+                  console.log('[realtime] tasks channel retry subscribe()');
+                  tasksChannel.subscribe((retryStatus) => {
+                    if (retryStatus === 'SUBSCRIBED') {
+                      _tasksChannelReady = true;
+                      setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady);
+                      startKeepalive();
+                    } else if (retryStatus === 'CLOSED' || retryStatus === 'CHANNEL_ERROR') {
+                      _tasksChannelReady = false;
+                      setSyncRealtimeConnected(false);
+                    }
+                  });
+                }
+              }, 2000);
             }
           });
 
-        supabaseClient
+        const notesChannel = supabaseClient
           .channel('notes-changes')
           .on('postgres_changes',
             {
@@ -4914,10 +4974,43 @@
               _notesChannelReady = true
               setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady)
             } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-              _notesChannelReady = false
-              setSyncRealtimeConnected(false)
+              // BUG FIX 3: Retry once after 2 s before marking as disconnected
+              console.warn('[realtime] notes channel ' + status + ' — scheduling retry')
+              clearTimeout(_notesRetryTimer);
+              _notesRetryTimer = setTimeout(() => {
+                const state = notesChannel.state;
+                if (state !== 'joined' && state !== 'joining') {
+                  console.log('[realtime] notes channel retry subscribe()');
+                  notesChannel.subscribe((retryStatus) => {
+                    if (retryStatus === 'SUBSCRIBED') {
+                      _notesChannelReady = true;
+                      setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady);
+                    } else if (retryStatus === 'CLOSED' || retryStatus === 'CHANNEL_ERROR') {
+                      _notesChannelReady = false;
+                      setSyncRealtimeConnected(false);
+                    }
+                  });
+                }
+              }, 2000);
             }
           });
+
+        // BUG FIX 3: On tab visibility change (sleep/wake), check channel health
+        // and reconnect if the OS dropped the socket while the tab was hidden.
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) {
+            const tasksState = tasksChannel.state;
+            const notesState = notesChannel.state;
+            if (tasksState !== 'joined' && tasksState !== 'joining') {
+              console.log('[realtime] tab became visible — reconnecting tasks channel');
+              tasksChannel.subscribe();
+            }
+            if (notesState !== 'joined' && notesState !== 'joining') {
+              console.log('[realtime] tab became visible — reconnecting notes channel');
+              notesChannel.subscribe();
+            }
+          }
+        });
       }
 
       function renderTags() {
