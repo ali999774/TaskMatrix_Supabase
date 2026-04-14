@@ -2805,6 +2805,7 @@
                       .upsert({
                         id: note.supabaseId,
                         user_id: currentUser.id,
+                        title: note.title || '',  // TITLE FIX: also apply to offline-flush path
                         content: note.content || '',
                         color: note.color || 'yellow',
                         position_x: note.x || 0,
@@ -3132,6 +3133,7 @@
                 .upsert(toUpdate.map(n => ({
                   id: n.supabaseId,
                   user_id: currentUser.id,
+                  title: n.title || '',  // TITLE FIX: was missing — caused title to revert after save
                   content: n.content || '',
                   color: n.color || 'yellow',
                   position_x: n.x || 0,
