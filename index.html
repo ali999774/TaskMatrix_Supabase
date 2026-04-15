@@ -563,7 +563,7 @@
 
     .matrix {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(2, 1fr);
       gap: 24px;
       padding: 24px;
     }
@@ -1742,6 +1742,32 @@
       justify-content: space-between;
       align-items: center;
     }
+
+    .page-body-layout {
+      display: flex;
+      flex-direction: row;
+      gap: 24px;
+      align-items: flex-start;
+    }
+
+    .matrix-col {
+      flex: 0 0 auto;
+      min-width: 0;
+    }
+
+    .notes-col {
+      flex: 1 1 300px;
+      min-width: 280px;
+    }
+
+    @media (max-width: 900px) {
+      .page-body-layout {
+        flex-direction: column;
+      }
+      .notes-col {
+        width: 100%;
+      }
+    }
   </style>
 </head>
 
@@ -2067,8 +2093,10 @@
       </div>
     </div>
 
-    <!-- Matrix -->
-    <div class="card">
+    <div class="page-body-layout">
+      <div class="matrix-col">
+        <!-- Matrix -->
+        <div class="card">
       <div class="matrix">
         <div class="quadrant red" ondragover="allowDrop(event)" ondrop="drop(event, 'do-first')"
           ondragenter="this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
@@ -2173,12 +2201,16 @@
       <div id="archived-tasks-list"></div>
     </div>
 
-    <!-- Pinned Notes Section -->
-    <div class="pinned-notes-section" id="pinned-notes-section">
+      </div>
+      <div class="notes-col">
+        <!-- Pinned Notes Section -->
+        <div class="pinned-notes-section" id="pinned-notes-section">
       <div class="pinned-notes-header">
         <span>📌 Pinned Notes</span>
       </div>
       <div class="pinned-notes-grid" id="pinned-notes-grid"></div>
+    </div>
+      </div>
     </div>
   </div>
 
