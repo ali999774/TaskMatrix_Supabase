@@ -3618,12 +3618,12 @@
           };
           tasks.push(newTask);
           input.value = '';
+          render();
+          updateStatsDisplay();
           // Track the promise so quickAddMoveTo() can await it before saving
           // the quadrant change (prevents duplicate INSERT race condition).
           _pendingSaveTasksPromise = saveTasks();
           await _pendingSaveTasksPromise;
-          render();
-          updateStatsDisplay();
           showQuickAddTray(newTask.id);
         }
       }
