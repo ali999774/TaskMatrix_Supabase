@@ -2434,7 +2434,8 @@
       let db = null
       try {
         db = new Dexie('taskmatrix')
-        // BUG 3 FIX: bump to version 2 to add deletedTasks table
+        // GHOST-TASK FIX: v3 — drop local tombstone store; cross-device deletes
+        // are now tracked server-side via `deleted_at` on the Supabase tasks table.
         db.version(1).stores({
           tasks: 'localId, supabaseId, updatedAt, pendingSync',
           notes: 'localId, supabaseId, updatedAt, pendingSync'
@@ -2442,7 +2443,12 @@
         db.version(2).stores({
           tasks: 'localId, supabaseId, updatedAt, pendingSync',
           notes: 'localId, supabaseId, updatedAt, pendingSync',
-          deletedTasks: 'id, deleted_at'  // BUG 3: ghost-task tombstone store
+          deletedTasks: 'id, deleted_at'
+        })
+        db.version(3).stores({
+          tasks: 'localId, supabaseId, updatedAt, pendingSync',
+          notes: 'localId, supabaseId, updatedAt, pendingSync',
+          deletedTasks: null  // removed — soft-delete via Supabase deleted_at
         })
       } catch (dexieInitErr) {
         console.warn('[Dexie] init failed — offline cache disabled:', dexieInitErr)
@@ -2730,6 +2736,35 @@
               for (const row of pending) {
                 try {
                   const task = JSON.parse(row.data)
+
+                  // GHOST-TASK FIX: skip rows that were deleted locally (deleted_at set)
+                  if (task.deleted_at) {
+                    console.log(`[flush:${source}] skipping locally-deleted task: "${task.title}"`)
+                    try { await db.tasks.delete(row.localId) } catch (e) { }
+                    continue
+                  }
+
+                  // GHOST-TASK FIX: if task has a server row, check it hasn't been
+                  // soft-deleted on the server (e.g. deleted from another device offline)
+                  if (task.supabaseId && currentUser) {
+                    try {
+                      const { data: serverRow } = await supabaseClient
+                        .from('tasks')
+                        .select('deleted_at')
+                        .eq('id', task.supabaseId)
+                        .eq('user_id', currentUser.id)
+                        .maybeSingle()
+                      if (serverRow?.deleted_at) {
+                        console.log(`[flush:${source}] task already soft-deleted on server — purging local: "${task.title}"`)
+                        try { await db.tasks.delete(row.localId) } catch (e) { }
+                        tasks = tasks.filter(t => t.id !== task.id)
+                        continue
+                      }
+                    } catch (checkErr) {
+                      console.warn(`[flush:${source}] server delete-check failed (proceeding with upsert):`, checkErr)
+                    }
+                  }
+
                   const upsertRow = {
                     ...(task.supabaseId ? { id: task.supabaseId } : {}),
                     user_id: currentUser.id,
@@ -2906,7 +2941,8 @@
           subtasks: row.subtasks || [],
           pinned: row.pinned,
           createdAt: row.created_at,
-          modifiedAt: row.updated_at
+          modifiedAt: row.updated_at,
+          deleted_at: row.deleted_at || null
         }
       }
 
@@ -3039,7 +3075,13 @@
               saveRetryTimer = setTimeout(() => { saveTasks(); }, delay);
             }
           }
-        } finally { localChangeInFlight = false; }
+        } finally {
+          // BUG 1 FIX: delay releasing the guard so the Realtime INSERT echo
+          // (which arrives ~100-400ms after the Supabase response) is still blocked.
+          // Without this, the echo fires loadTasksFromSupabase() and duplicates the
+          // task in Q1 because localChangeInFlight was already false.
+          setTimeout(() => { localChangeInFlight = false; }, 500);
+        }
       }
 
 
@@ -3053,6 +3095,7 @@
             .from('tasks')
             .select('*')
             .eq('user_id', currentUser.id)
+            .is('deleted_at', null)  // GHOST-TASK FIX: never return soft-deleted tasks
             .order('created_at', { ascending: true });
           if (error) throw error;
 
@@ -3078,8 +3121,11 @@
           console.warn('[loadTasks] Supabase failed, loading from Dexie cache')
           try {
             const cached = await db.tasks.toArray()
-            if (cached.length > 0) {
-              tasks = cached.map(row => JSON.parse(row.data))
+            const liveCached = cached.filter(row => {
+              try { return !JSON.parse(row.data).deleted_at; } catch (e) { return true; }
+            })
+            if (liveCached.length > 0) {
+              tasks = liveCached.map(row => JSON.parse(row.data))
               if (!silent) setSyncState('offline')
             } else {
               if (!silent) await handleSupabaseError(err, 'loadTasksFromSupabase')
@@ -3952,34 +3998,38 @@
         const task = tasks.find(t => t.id === id);
         if (!task) return;
         if (confirm('Delete this task?')) {
-          // BUG 3 FIX: write tombstone to deletedTasks BEFORE attempting server delete
-          // so that any Realtime INSERT echo is filtered out even if the delete races
-          if (db && task.supabaseId) {
-            try {
-              await db.deletedTasks.put({ id: task.supabaseId, deleted_at: new Date().toISOString() });
-            } catch (e) { console.warn('[deleteTask] deletedTasks tombstone write failed:', e); }
-          }
-
-          // Fix 1: immediate targeted DELETE by supabaseId
+          // GHOST-TASK FIX: soft-delete via Supabase deleted_at (cross-device)
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
             try {
               const { error } = await supabaseClient
                 .from('tasks')
-                .delete()
+                .update({ deleted_at: new Date().toISOString() })
                 .eq('id', task.supabaseId)
+                .eq('user_id', currentUser.id)
               if (error) throw error
               setSyncState('synced')
-              // BUG 3 FIX: server confirmed delete — remove tombstone (it's safely gone)
-              if (db) {
-                try { await db.deletedTasks.delete(task.supabaseId); } catch (e) { }
-              }
             } catch (err) {
+              // Offline: mark deleted_at locally so flush won't resurrect it
+              task.deleted_at = new Date().toISOString();
+              if (db) {
+                try {
+                  await db.tasks.put({
+                    localId: task.id,
+                    supabaseId: task.supabaseId || null,
+                    pendingSync: 1,
+                    updatedAt: new Date().toISOString(),
+                    data: JSON.stringify(task)
+                  })
+                } catch (e) { }
+              }
               await handleSupabaseError(err, 'deleteTask')
-              // tombstone stays in deletedTasks so ghost won't re-appear on reconnect
             }
+          } else if (!task.supabaseId) {
+            // Task never reached server — mark locally deleted so flush skips it
+            task.deleted_at = new Date().toISOString();
           }
-          // Also remove from Dexie cache
+          // Remove from Dexie cache (task is gone from local view)
           try { await db.tasks.delete(id) } catch (e) { }
           tasks = tasks.filter(t => t.id !== id);
           render();
@@ -4778,33 +4828,38 @@
         if (!currentEditingTask) return;
         if (confirm('Delete this task?')) {
           const task = currentEditingTask;
-          // BUG 3 FIX: write tombstone BEFORE server delete
-          if (db && task.supabaseId) {
-            try {
-              await db.deletedTasks.put({ id: task.supabaseId, deleted_at: new Date().toISOString() });
-            } catch (e) { console.warn('[deleteTaskFromModal] deletedTasks tombstone write failed:', e); }
-          }
-
-          // Fix 1: immediate targeted DELETE by supabaseId
+          // GHOST-TASK FIX: soft-delete via Supabase deleted_at (cross-device)
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
             try {
               const { error } = await supabaseClient
                 .from('tasks')
-                .delete()
+                .update({ deleted_at: new Date().toISOString() })
                 .eq('id', task.supabaseId)
+                .eq('user_id', currentUser.id)
               if (error) throw error
               setSyncState('synced')
-              // BUG 3 FIX: server confirmed delete — remove tombstone
-              if (db) {
-                try { await db.deletedTasks.delete(task.supabaseId); } catch (e) { }
-              }
             } catch (err) {
+              // Offline: mark deleted_at locally so flush won't resurrect it
+              task.deleted_at = new Date().toISOString();
+              if (db) {
+                try {
+                  await db.tasks.put({
+                    localId: task.id,
+                    supabaseId: task.supabaseId || null,
+                    pendingSync: 1,
+                    updatedAt: new Date().toISOString(),
+                    data: JSON.stringify(task)
+                  })
+                } catch (e) { }
+              }
               await handleSupabaseError(err, 'deleteTaskFromModal')
-              // tombstone stays so ghost won't resurface
             }
+          } else if (!task.supabaseId) {
+            // Task never reached server — mark locally deleted so flush skips it
+            task.deleted_at = new Date().toISOString();
           }
-          // Also remove from Dexie cache
+          // Remove from Dexie cache (task is gone from local view)
           try { await db.tasks.delete(task.id) } catch (e) { }
           tasks = tasks.filter(t => t.id !== task.id);
           render();
@@ -4946,16 +5001,15 @@
             async (payload) => {
               if (localChangeInFlight) return;
 
-              // BUG 3 FIX: on INSERT, check if this task was locally deleted (tombstone)
-              // If so, skip it — it was deleted locally and the server is just echoing back
-              if (payload.eventType === 'INSERT' && payload.new && db) {
-                try {
-                  const wasDeleted = await db.deletedTasks.get(payload.new.id);
-                  if (wasDeleted) {
-                    console.log('[realtime] ghost task INSERT suppressed (tombstone hit):', payload.new.id);
-                    return; // skip — do not re-add this task
-                  }
-                } catch (e) { /* non-fatal */ }
+              // GHOST-TASK FIX: if the event carries a non-null deleted_at, treat it as a
+              // delete — remove from local state and skip any re-render of this task
+              if (payload.new && payload.new.deleted_at) {
+                console.log('[realtime] soft-delete received for task:', payload.new.id);
+                tasks = tasks.filter(t => t.supabaseId !== payload.new.id);
+                if (db) { try { await db.tasks.where('supabaseId').equals(payload.new.id).delete() } catch (e) { } }
+                render();
+                renderArchived();
+                return;
               }
 
               // Debounce to avoid hammering on rapid changes
@@ -5065,6 +5119,10 @@
                   } else {
                     console.log('[auth] session refreshed successfully on tab focus');
                     setSyncState('synced');
+                    // BUG 2 FIX: push any tasks that were written to Dexie
+                    // during the expired session (pendingSync:1) now that we
+                    // have a valid token again.
+                    flushPendingSync('tab-focus-refresh');
                   }
                 } else {
                   // Session is still valid — update currentUser in case it changed
