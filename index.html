@@ -3055,8 +3055,7 @@
             if (allData.length > 0) {
               allData.forEach(row => {
                 const task = tasks.find(t => t.supabaseId === row.id ||
-                  (!t.supabaseId && t.title === row.title &&
-                    t.createdAt === row.created_at));
+                  (!t.supabaseId && t.title === row.title));
                 if (task) task.supabaseId = row.id;
               });
             }
