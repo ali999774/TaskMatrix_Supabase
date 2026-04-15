@@ -2469,6 +2469,14 @@
       let filters = { search: '', category: 'all', status: 'all', date: 'all' };
       let activeContext = 'all'; // Change 5: context switcher state
       let localChangeInFlight = false;
+      // Clearable timer ID for the 500ms Realtime-echo guard in saveTasks().
+      // Stored at module level so rapid consecutive saves reset the window rather
+      // than stacking multiple timers that each clear the flag independently.
+      let _localChangeInFlightTimer = null;
+      // Tracks the most-recent saveTasks() promise so quickAddMoveTo() can
+      // await the handleQuickAdd INSERT before doing its own save — preventing
+      // a duplicate INSERT when the task has no supabaseId yet.
+      let _pendingSaveTasksPromise = Promise.resolve();
       // FIX 2: retry state for failed saves
       let saveRetryCount = 0;
       let saveRetryTimer = null;
@@ -3078,9 +3086,11 @@
         } finally {
           // BUG 1 FIX: delay releasing the guard so the Realtime INSERT echo
           // (which arrives ~100-400ms after the Supabase response) is still blocked.
-          // Without this, the echo fires loadTasksFromSupabase() and duplicates the
-          // task in Q1 because localChangeInFlight was already false.
-          setTimeout(() => { localChangeInFlight = false; }, 500);
+          // Use clearTimeout so rapid consecutive saveTasks() calls reset the
+          // 500ms window rather than stacking timers — the first timer used to
+          // fire mid-flight for a second call, prematurely clearing the guard.
+          clearTimeout(_localChangeInFlightTimer);
+          _localChangeInFlightTimer = setTimeout(() => { localChangeInFlight = false; }, 500);
         }
       }
 
@@ -3525,9 +3535,21 @@
         }, 4000)
       }
 
-      function quickAddMoveTo(quadrant) {
+      // SCHEDULE-TASK FIX: make async so we can await the handleQuickAdd INSERT
+      // before saving the quadrant change. Without the await, quickAddMoveTo runs
+      // while the first saveTasks() INSERT is still in-flight (task has no
+      // supabaseId yet), causing a second INSERT → two server rows → task reverts
+      // to Do First on reload because only Row A (imp:5/urg:5) gets a supabaseId.
+      async function quickAddMoveTo(quadrant) {
         if (!lastQuickAddedId) return
-        const task = tasks.find(t => t.id === lastQuickAddedId)
+        const taskId = lastQuickAddedId
+        // Wait for the initial handleQuickAdd INSERT to finish so the task has
+        // a supabaseId — the second saveTasks() will then hit toUpdate (UPSERT)
+        // instead of toInsert (duplicate INSERT).
+        try { await _pendingSaveTasksPromise } catch (e) { /* proceed even on failure */ }
+        // Re-find the task after the await in case loadTasksFromSupabase() ran
+        // and replaced the tasks array during the initial INSERT round-trip.
+        const task = tasks.find(t => t.id === taskId)
         if (!task) return
         const quadMap = {
           'do-first': { importance: 5, urgency: 5 },
@@ -3571,7 +3593,9 @@
           };
           tasks.push(newTask);
           input.value = '';
-          saveTasks();
+          // Track the promise so quickAddMoveTo() can await it before saving
+          // the quadrant change (prevents duplicate INSERT race condition).
+          _pendingSaveTasksPromise = saveTasks();
           render();
           updateStatsDisplay();
           showQuickAddTray(newTask.id);
