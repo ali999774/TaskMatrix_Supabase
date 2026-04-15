@@ -2469,6 +2469,7 @@
       let filters = { search: '', category: 'all', status: 'all', date: 'all' };
       let activeContext = 'all'; // Change 5: context switcher state
       let localChangeInFlight = false;
+      let _saveInFlightCount = 0;
       // Clearable timer ID for the 500ms Realtime-echo guard in saveTasks().
       // Stored at module level so rapid consecutive saves reset the window rather
       // than stacking multiple timers that each clear the flag independently.
@@ -2956,6 +2957,7 @@
 
       // ── Supabase data operations ─────────────────────────────────
       async function saveTasks() {
+        _saveInFlightCount++;
         localChangeInFlight = true;
         try {
           if (!currentUser) {
@@ -3089,8 +3091,11 @@
           // Use clearTimeout so rapid consecutive saveTasks() calls reset the
           // 500ms window rather than stacking timers — the first timer used to
           // fire mid-flight for a second call, prematurely clearing the guard.
-          clearTimeout(_localChangeInFlightTimer);
-          _localChangeInFlightTimer = setTimeout(() => { localChangeInFlight = false; }, 500);
+          _saveInFlightCount--;
+          if (_saveInFlightCount === 0) {
+            clearTimeout(_localChangeInFlightTimer);
+            _localChangeInFlightTimer = setTimeout(() => { localChangeInFlight = false; }, 500);
+          }
         }
       }
 
@@ -3110,7 +3115,28 @@
           if (error) throw error;
 
           console.log('[DEBUG 5] loadTasksFromSupabase — raw notes from Supabase for each task:', data.map(r => ({ supabaseId: r.id, title: r.title, notes: r.notes })));
-          tasks = data.map(mapRowToTask);
+          
+          const incoming = data.map(mapRowToTask);
+          const incomingIds = new Set(
+            incoming.map(t => t.supabaseId).filter(Boolean)
+          );
+          
+          // Remove server-deleted tasks (have ID, not in set)
+          tasks = tasks.filter(t =>
+            !t.supabaseId || incomingIds.has(t.supabaseId)
+          );
+          
+          // Update existing or add new
+          incoming.forEach(serverTask => {
+            const local = tasks.find(
+              t => t.supabaseId === serverTask.supabaseId
+            );
+            if (local) {
+              Object.assign(local, serverTask);
+            } else {
+              tasks.push(serverTask);
+            }
+          });
 
           // Fix 4: Update Dexie cache with fresh data
           try {
@@ -3565,7 +3591,7 @@
         lastQuickAddedId = null
       }
 
-      function handleQuickAdd(event) {
+      async function handleQuickAdd(event) {
         if (event.key === 'Enter') {
           const input = document.getElementById('quick-add-input');
           const text = input.value.trim();
@@ -3596,6 +3622,7 @@
           // Track the promise so quickAddMoveTo() can await it before saving
           // the quadrant change (prevents duplicate INSERT race condition).
           _pendingSaveTasksPromise = saveTasks();
+          await _pendingSaveTasksPromise;
           render();
           updateStatsDisplay();
           showQuickAddTray(newTask.id);
@@ -3829,7 +3856,7 @@
         }
       }
 
-      function convertNoteToTask() {
+      async function convertNoteToTask() {
         const title = document.getElementById('note-title-input').value.trim();
         const content = document.getElementById('note-content-input').value.trim();
 
@@ -3863,7 +3890,8 @@
           recurDays: []
         });
 
-        saveTasks();
+        _pendingSaveTasksPromise = saveTasks();
+        await _pendingSaveTasksPromise;
         render();
         updateStatsDisplay();
 
@@ -3927,7 +3955,7 @@
             task.status = 'completed';
             awardXP(task);
             if (task.recurring) {
-              createNextRecurrence(task);
+              await createNextRecurrence(task);
             }
           }
           else task.status = 'todo';
@@ -3954,7 +3982,7 @@
         } finally { localChangeInFlight = false; }
       }
 
-      function createNextRecurrence(completedTask) {
+      async function createNextRecurrence(completedTask) {
         if (!completedTask.dueDate) return;
 
         const currentDue = new Date(completedTask.dueDate);
@@ -4002,7 +4030,8 @@
         };
 
         tasks.push(newTask);
-        saveTasks();
+        _pendingSaveTasksPromise = saveTasks();
+        await _pendingSaveTasksPromise;
       }
 
       function awardXP(task) {
