@@ -3376,18 +3376,31 @@
             modifiedAt: row.updated_at
           }));
 
-          // Update local Dexie notes replica
+          // Update local Dexie notes replica — merge strategy preserving pendingSync:1 notes
           if (db) {
             try {
+              // 1. Save any notes that haven't reached Supabase yet
+              const pending = await db.notes.filter(n => n.pendingSync === 1).toArray();
+              const pendingIds = new Set(pending.map(n => n.localId));
+
+              // 2. Clear and restore pending notes first so they are never lost
               await db.notes.clear();
-              if (notes.length > 0) {
-                await db.notes.bulkPut(notes.map(n => ({
+              for (const p of pending) {
+                await db.notes.put(p);
+              }
+
+              // 3. Write server notes, skipping any id that has a pending local version
+              const serverRows = notes
+                .filter(n => !pendingIds.has(n.id))
+                .map(n => ({
                   localId: n.id,
                   supabaseId: n.supabaseId,
                   pendingSync: 0,
                   updatedAt: new Date().toISOString(),
                   data: JSON.stringify(n)
-                })));
+                }));
+              if (serverRows.length > 0) {
+                await db.notes.bulkPut(serverRows);
               }
             } catch (dexieErr) {
               console.warn('[loadNotes] Dexie cache update failed:', dexieErr);
@@ -3506,6 +3519,7 @@
             const savedStats = localStorage.getItem('userStats');
             if (savedStats) userStats = JSON.parse(savedStats);
             await checkAndMigrateLocalStorage();
+            await flushPendingSync(); // flush pending Dexie changes before server overwrites local cache
             await loadTasksFromSupabase();
             await loadNotesFromSupabase();
             render();
@@ -4108,6 +4122,7 @@
         if (confirm('Delete this task?')) {
           console.log('[TaskMatrix] deleteTask → deleting task', { id, softDeleteTimestamp: new Date().toISOString() });
           // GHOST-TASK FIX: soft-delete via Supabase deleted_at (cross-device)
+          let supabaseDeleteSucceeded = false;
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
             try {
@@ -4118,8 +4133,9 @@
                 .eq('user_id', currentUser.id)
               if (error) throw error
               setSyncState('synced')
+              supabaseDeleteSucceeded = true;
             } catch (err) {
-              // Offline: mark deleted_at locally so flush won't resurrect it
+              // Offline: write tombstone to Dexie with pendingSync:1 — do NOT delete from Dexie
               task.deleted_at = new Date().toISOString();
               if (db) {
                 try {
@@ -4135,11 +4151,15 @@
               await handleSupabaseError(err, 'deleteTask')
             }
           } else if (!task.supabaseId) {
-            // Task never reached server — mark locally deleted so flush skips it
+            // Task never reached server — safe to remove from Dexie immediately
             task.deleted_at = new Date().toISOString();
+            supabaseDeleteSucceeded = true;
           }
-          // Remove from Dexie cache (task is gone from local view)
-          try { await db.tasks.delete(id) } catch (e) { }
+          // Only remove from Dexie when confirmed deleted on server (or task never had a server record).
+          // When Supabase failed, tombstone with pendingSync:1 stays in Dexie for flushPendingSync.
+          if (supabaseDeleteSucceeded) {
+            try { await db.tasks.delete(id) } catch (e) { }
+          }
           tasks = tasks.filter(t => t.id !== id);
           render();
           updateStatsDisplay();
