@@ -1768,6 +1768,11 @@
         width: 100%;
       }
     }
+    .voice-mic-btn { transition: all 0.15s; }
+    .voice-mic-btn.voice-recording { color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.3); border-radius: 8px; }
+    .voice-mic-btn.voice-processing { color: var(--text-muted); opacity: 0.6; }
+    .voice-mic-btn.voice-done { color: #16a34a; }
+    .voice-mic-btn.voice-error { color: #f59e0b; }
   </style>
 </head>
 
@@ -1780,6 +1785,9 @@
       <div class="zen-logo">📊 TaskMatrix</div>
       <input type="text" id="quick-add-input" class="quick-add-input" placeholder="⚡ Quick add task (press Enter)..."
         onkeypress="handleQuickAdd(event)">
+      <button type="button" id="voice-mic-btn" class="zen-icon-btn voice-mic-btn" title="Hold to speak"
+        onmousedown="startVoiceRecording(event)" onmouseup="stopVoiceRecording(event)"
+        ontouchstart="startVoiceRecording(event)" ontouchend="stopVoiceRecording(event)">🎤</button>
       <div class="zen-actions">
         <button class="zen-icon-btn" onclick="toggleTheme()" title="Toggle Dark Mode" id="theme-toggle">🌙</button>
         <div id="sync-dot" class="status-indicator" title="Synced" style="cursor:default;"></div>
@@ -3697,6 +3705,106 @@
         }
       }
 
+      // ── Voice-to-task ────────────────────────────────────────────
+      let _voiceMediaRecorder = null;
+      let _voiceAudioChunks = [];
+      let _voiceMimeType = 'audio/webm';
+
+      const _voiceBtnStates = {
+        idle:       { text: '🎤', title: 'Hold to speak',   cls: '',                disabled: false },
+        recording:  { text: '🔴', title: 'Release to send', cls: 'voice-recording', disabled: false },
+        processing: { text: '⏳', title: 'Processing...',   cls: 'voice-processing', disabled: true  },
+        done:       { text: '✓',  title: 'Task added ✓',    cls: 'voice-done',       disabled: false },
+        error:      { text: '⚠️', title: 'Try again',       cls: 'voice-error',      disabled: false }
+      };
+
+      function setVoiceBtnState(state) {
+        const btn = document.getElementById('voice-mic-btn');
+        if (!btn) return;
+        const s = _voiceBtnStates[state] || _voiceBtnStates.idle;
+        btn.textContent = s.text;
+        btn.title = s.title;
+        btn.disabled = s.disabled;
+        btn.className = 'zen-icon-btn voice-mic-btn' + (s.cls ? ' ' + s.cls : '');
+        if (state === 'done' || state === 'error') {
+          setTimeout(() => setVoiceBtnState('idle'), 2500);
+        }
+      }
+
+      async function startVoiceRecording(e) {
+        e.preventDefault();
+        if (_voiceMediaRecorder && _voiceMediaRecorder.state === 'recording') return;
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const mimeType = 'audio/mp4';
+          _voiceMimeType = mimeType;
+          _voiceAudioChunks = [];
+          _voiceMediaRecorder = new MediaRecorder(stream, { mimeType });
+          _voiceMediaRecorder._mimeType = mimeType; // store for later use
+          _voiceMediaRecorder.ondataavailable = ev => _voiceAudioChunks.push(ev.data);
+          _voiceMediaRecorder.start();
+          setVoiceBtnState('recording');
+        } catch (err) {
+          console.error('[voiceTask] mic access failed:', err);
+          setVoiceBtnState('error');
+        }
+      }
+
+      async function stopVoiceRecording(e) {
+        e.preventDefault();
+        if (!_voiceMediaRecorder || _voiceMediaRecorder.state !== 'recording') return;
+        setVoiceBtnState('processing');
+        _voiceMediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(_voiceAudioChunks, { type: _voiceMimeType });
+          _voiceMediaRecorder.stream.getTracks().forEach(t => t.stop());
+          _voiceMediaRecorder = null;
+          try {
+            const voiceResult = await handleVoiceTask(audioBlob);
+            await addVoiceTask(voiceResult);
+            setVoiceBtnState('done');
+          } catch (err) {
+            console.error('[voiceTask] pipeline failed:', err);
+            setVoiceBtnState('error');
+          }
+        };
+        _voiceMediaRecorder.stop();
+      }
+
+      async function addVoiceTask(voiceResult) {
+        const quadrantMap = {
+          'do-first': { importance: 5, urgency: 5 },
+          'schedule':  { importance: 5, urgency: 2 },
+          'delegate':  { importance: 2, urgency: 5 },
+          'eliminate': { importance: 2, urgency: 2 }
+        };
+        const q = quadrantMap[voiceResult.quadrant] || { importance: 5, urgency: 5 };
+        const newTaskCategory = activeContext === 'all' ? 'personal' : activeContext;
+        const newTask = {
+          id: Date.now(),
+          title: voiceResult.title,
+          category: newTaskCategory,
+          status: 'todo',
+          dueDate: voiceResult.due_date || null,
+          importance: q.importance,
+          urgency: q.urgency,
+          notes: '',
+          tags: [],
+          subtasks: [],
+          pinned: false,
+          createdAt: new Date().toISOString(),
+          recurring: false,
+          recurFrequency: '',
+          recurInterval: 1,
+          recurDays: []
+        };
+        tasks.push(newTask);
+        console.log('[TaskMatrix] addVoiceTask → task created', { id: newTask.id, quadrant: voiceResult.quadrant, transcript: voiceResult.raw_transcript });
+        render();
+        updateStatsDisplay();
+        _pendingSaveTasksPromise = saveTasks();
+        await _pendingSaveTasksPromise;
+      }
+
       function toggleMenu(event) {
         event.stopPropagation();
         const menu = document.getElementById('main-menu');
@@ -5565,6 +5673,8 @@
         Sign in with Google
       </button>
     </div>
+    <script src="src/config.js"></script>
+    <script src="src/voiceTask.js"></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
