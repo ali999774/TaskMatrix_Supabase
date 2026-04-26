@@ -4,3 +4,7 @@ node_modules/
 package-lock.json
 test-results/
 sw.js.backup
+run_sim.js
+test-add.js
+test_add.js
+test_find.js
