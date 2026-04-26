@@ -99,10 +99,10 @@ async function handleVoiceNote(content) {
     modifiedAt: new Date().toISOString()
   };
 
-  notes.push(note);
-  renderNotes();
-  renderPinnedNotes();
-  saveNotes();
+  window._tmNotes.push(note);
+  window._tmRenderNotes();
+  window._tmRenderPinnedNotes();
+  window._tmSaveNotes();
 
   console.log('[voiceTask] handleVoiceNote → note created', { id: note.id, title: note.title });
 }

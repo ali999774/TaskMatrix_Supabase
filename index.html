@@ -2500,6 +2500,7 @@
 
       let tasks = [];
       let notes = [];
+      window._tmNotes = notes;
       let userStats = { xp: 0, level: 1, totalCompleted: 0, weeklyGoal: 10, weeklyCompleted: 0 };
       let draggedTask = null;
       let showCompleted = false;
@@ -3612,6 +3613,7 @@
       function saveStats() { localStorage.setItem('userStats', JSON.stringify(userStats)); }
       // saveNotes proxies to Supabase; used wherever saveNotes() is called
       function saveNotes() { saveNotesToSupabase(notes); }
+      window._tmSaveNotes = saveNotes;
 
       function getQuad(imp, urg) {
         if (urg >= 4 && imp >= 4) return 'do-first';
@@ -3906,6 +3908,7 @@
         `;
         }).join('');
       }
+      window._tmRenderNotes = renderNotes;
 
       function renderPinnedNotes() {
         const container = document.getElementById('pinned-notes-section');
@@ -3931,6 +3934,7 @@
         `;
         }).join('');
       }
+      window._tmRenderPinnedNotes = renderPinnedNotes;
 
       function filterNotes() {
         const searchTerm = document.getElementById('notes-search').value;
