@@ -38,7 +38,7 @@ async function parseTranscript(transcript) {
       messages: [
         {
           role: 'system',
-          content: 'You are a task parser for an Eisenhower Matrix. Given a spoken task description, return ONLY valid JSON with two fields: title (short task name, max 6 words) and quadrant (one of: do_first, schedule, delegate, eliminate). No explanation, no markdown, just JSON.'
+          content: 'You are a voice input parser for a task manager. Given a spoken input, detect the intent and return ONLY valid JSON.\n\nIf the user says \'note:\' or \'note to self\' at the start, return:\n{ "intent": "note", "content": "<cleaned up text without the prefix>" }\n\nOtherwise treat it as a task and return:\n{ "intent": "task", "title": "<short task name max 6 words>", "quadrant": "<do_first|schedule|delegate|eliminate>" }\n\nNo explanation, no markdown, just JSON.'
         },
         {
           role: 'user',
@@ -65,6 +65,15 @@ async function parseTranscript(transcript) {
     throw new Error(`Invalid JSON from xAI: ${e.message}`);
   }
 
+  if (parsed.intent === 'note') {
+    if (!parsed.content) {
+      console.error('[voiceTask] xAI parsed note object:', parsed);
+      throw new Error('Missing content field in note response');
+    }
+    return parsed;
+  }
+
+  // Task intent validation
   const validQuadrants = ['do_first', 'schedule', 'delegate', 'eliminate'];
   if (!parsed.title || !validQuadrants.includes(parsed.quadrant)) {
     console.error('[voiceTask] xAI parsed object:', parsed);
@@ -74,12 +83,42 @@ async function parseTranscript(transcript) {
   return parsed;
 }
 
+async function handleVoiceNote(content) {
+  const timestamp = new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit'
+  });
+
+  const note = {
+    id: Date.now(),
+    title: `🎤 Voice Note — ${timestamp}`,
+    content: content,
+    pinned: false,
+    color: 'yellow',
+    createdAt: new Date().toISOString(),
+    modifiedAt: new Date().toISOString()
+  };
+
+  notes.push(note);
+  renderNotes();
+  renderPinnedNotes();
+  saveNotes();
+
+  console.log('[voiceTask] handleVoiceNote → note created', { id: note.id, title: note.title });
+}
+
 async function handleVoiceTask(audioBlob) {
   const rawTranscript = await transcribeAudio(audioBlob);
   console.log('[voiceTask] raw_transcript:', rawTranscript);
 
   const parsed = await parseTranscript(rawTranscript);
 
+  if (parsed.intent === 'note') {
+    await handleVoiceNote(parsed.content);
+    return { intent: 'note' };
+  }
+
+  // Task intent — existing logic unchanged
   const quadrantMap = {
     do_first:  'do-first',
     schedule:  'schedule',
@@ -88,6 +127,7 @@ async function handleVoiceTask(audioBlob) {
   };
 
   return {
+    intent: 'task',
     title: parsed.title,
     quadrant: quadrantMap[parsed.quadrant] || 'do-first',
     due_date: null,
