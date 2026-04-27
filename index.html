@@ -2732,11 +2732,9 @@
           err?.status === 401) {
           const { error: refreshError } = await supabaseClient.auth.refreshSession()
           if (refreshError) {
-            console.log('[TaskMatrix] refreshSession → failure', { error: refreshError.message || refreshError });
             setSyncState('error')
             showSessionExpiredBanner()
           } else {
-            console.log('[TaskMatrix] refreshSession → success');
             setSyncState('synced')
             await loadTasksFromSupabase()
             render()
@@ -2778,7 +2776,6 @@
 
       function flushPendingSync(source) {
         if (_flushPromise) {
-          console.log(`[flush:${source}] flush already in progress — coalescing`)
           return _flushPromise
         }
         _flushPromise = _doFlush(source).finally(() => { _flushPromise = null })
@@ -2786,7 +2783,6 @@
       }
 
       async function _doFlush(source) {
-        console.log(`[flush:${source}] starting`)
         setSyncState('syncing')
 
         try {
@@ -2808,8 +2804,6 @@
             try {
               // ── Task flush ──────────────────────────────────────────
               const pending = await db.tasks.where('pendingSync').equals(1).toArray()
-              console.log('[TaskMatrix] flushPendingSync → starting flush', { count: pending.length });
-              console.log(`[flush:${source}] pending tasks: ${pending.length}`)
 
               for (const row of pending) {
                 try {
@@ -2817,7 +2811,6 @@
 
                   // GHOST-TASK FIX: skip rows that were deleted locally (deleted_at set)
                   if (task.deleted_at) {
-                    console.log(`[flush:${source}] skipping locally-deleted task: "${task.title}"`)
                     try { await db.tasks.delete(row.localId) } catch (e) { }
                     continue
                   }
@@ -2833,7 +2826,6 @@
                         .eq('user_id', currentUser.id)
                         .maybeSingle()
                       if (serverRow?.deleted_at) {
-                        console.log(`[flush:${source}] task already soft-deleted on server — purging local: "${task.title}"`)
                         try { await db.tasks.delete(row.localId) } catch (e) { }
                         tasks = tasks.filter(t => t.id !== task.id)
                         continue
@@ -2899,7 +2891,6 @@
                     } else {
                       await db.tasks.put({ ...row, pendingSync: 0 })
                     }
-                    console.log(`[flush:${source}] task OK: "${task.title}"`)
                   }
                 } catch (rowErr) {
                   // Row keeps pendingSync:1 — will retry on next flush
@@ -2911,7 +2902,6 @@
               // Push each pending note individually so a Supabase error on one
               // note leaves it in the retry queue rather than losing it.
               const pendingNotes = await db.notes.where('pendingSync').equals(1).toArray()
-              console.log(`[flush:${source}] pending notes: ${pendingNotes.length}`)
 
               for (const noteRow of pendingNotes) {
                 try {
@@ -2965,7 +2955,6 @@
                       pendingSync: 0,
                       data: JSON.stringify(note)
                     })
-                    console.log(`[flush:${source}] note OK: id=${note.id}`)
                   }
                 } catch (noteRowErr) {
                   // noteRow keeps pendingSync:1 — will retry on next flush
@@ -2982,8 +2971,6 @@
           render()
           if (typeof updateStatsDisplay === 'function') updateStatsDisplay()
           setSyncState('synced')
-          console.log('[TaskMatrix] flushPendingSync → flush complete');
-          console.log(`[flush:${source}] complete`)
 
         } catch (err) {
           localChangeInFlight = false
@@ -3027,7 +3014,6 @@
 
       // ── Supabase data operations ─────────────────────────────────
       async function saveTasks() {
-        console.log('[TaskMatrix] saveTasks → starting save', { toInsert: tasks.filter(t => !t.supabaseId).length, toUpdate: tasks.filter(t => t.supabaseId).length });
         _saveInFlightCount++;
         localChangeInFlight = true;
         try {
@@ -3073,7 +3059,6 @@
               pinned: t.pinned || false
             }));
 
-            console.log('[DEBUG 2] saveTasks — tasks going into toUpdate:', tasks.filter(t => t.supabaseId).map(t => ({ id: t.id, supabaseId: t.supabaseId, notes: t.notes })));
             const toUpdate = tasks.filter(t => t.supabaseId).map(t => ({
               id: t.supabaseId,
               user_id: currentUser.id,
@@ -3099,6 +3084,18 @@
             let allData = [];
 
             if (toUpdate.length > 0) {
+<<<<<<< cleanup-debug-logs-15192091614771872132
+              const { data, error } = await supabaseClient
+                .from('tasks')
+                .upsert(toUpdate, { onConflict: 'id' })
+                .select();
+              if (error) {
+                console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
+                console.error('[DEBUG 4] full error object:', JSON.stringify(error));
+                throw error;
+              }
+              if (data) allData.push(...data);
+=======
               console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
               const upsertPromises = toUpdate.map(t =>
                 supabaseClient
@@ -3117,6 +3114,7 @@
               }
               console.log('[saveTasks] upsert OK — rows returned:', allData.length);
               console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(allData[0]?.notes));
+>>>>>>> main
             }
 
             if (toInsert.length > 0) {
@@ -3134,7 +3132,6 @@
                   (!t.supabaseId && t.title === row.title));
                 if (task) {
                   if (!task.supabaseId) {
-                    console.log('[TaskMatrix] saveTasks → insert success, supabaseId assigned', { localId: task.id, supabaseId: row.id });
                   }
                   task.supabaseId = row.id;
                 }
@@ -3156,12 +3153,10 @@
             saveRetryCount = 0; // reset retry counter on success
             clearTimeout(saveRetryTimer);
           } catch (err) {
-            console.log('[TaskMatrix] saveTasks → insert/update failed', { error: err.message || err });
             // BUG FIX 2: Orange dot only on actual Supabase failure (not on write start)
             await handleSupabaseError(err, 'saveTasks');
             if (navigator.onLine && saveRetryCount < SAVE_RETRY_DELAYS.length) {
               const delay = SAVE_RETRY_DELAYS[saveRetryCount++];
-              console.log(`[saveTasks] scheduling retry #${saveRetryCount} in ${delay}ms`);
               clearTimeout(saveRetryTimer);
               saveRetryTimer = setTimeout(() => { saveTasks(); }, delay);
             }
@@ -3184,7 +3179,6 @@
       // silent=true skips sync-dot state changes (used by Realtime handler to avoid
       // clearing the 800ms green-debounce timer that a concurrent save already started)
       async function loadTasksFromSupabase(silent = false) {
-        console.log('[TaskMatrix] loadTasksFromSupabase → starting load');
         if (!currentUser) return;
         // FIX 2: reads do not flash the sync dot orange
         try {
@@ -3195,9 +3189,7 @@
             .is('deleted_at', null)  // GHOST-TASK FIX: never return soft-deleted tasks
             .order('created_at', { ascending: true });
           if (error) throw error;
-          console.log('[TaskMatrix] loadTasksFromSupabase → loaded tasks from server', { count: data.length });
 
-          console.log('[DEBUG 5] loadTasksFromSupabase — raw notes from Supabase for each task:', data.map(r => ({ supabaseId: r.id, title: r.title, notes: r.notes })));
           
           const incoming = data.map(mapRowToTask);
           const incomingIds = new Set(
@@ -3225,7 +3217,6 @@
               addedCount++;
             }
           });
-          console.log('[TaskMatrix] loadTasksFromSupabase → merge result', { kept: keptCount, added: addedCount, removed: removedCount });
 
           // Fix 4: Update Dexie cache with fresh data
           try {
@@ -3573,7 +3564,6 @@
             setupRealtime(currentUser.id); // Phase 2A: realtime sync
           } else if (!navigator.onLine && db) {
             // FIX 3: offline boot — load from Dexie cache if no session available
-            console.log('[init] offline with no session — attempting Dexie boot');
             try {
               const cachedTasks = await db.tasks.toArray();
               const cachedNotes = await db.notes.toArray();
@@ -3585,7 +3575,6 @@
                 renderNotes();
                 renderPinnedNotes();
                 setSyncState('offline');
-                console.log('[init] offline boot successful — tasks:', tasks.length, 'notes:', notes.length);
                 // When back online, do a full re-init to get fresh session + sync
                 window.addEventListener('online', () => { init(); }, { once: true });
                 return;
@@ -3621,7 +3610,6 @@
         }
 
         supabaseClient?.auth.onAuthStateChange(async (event, session) => {
-          console.log('[TaskMatrix] onAuthStateChange → auth event', { event, userId: session?.user?.id });
           if (event === 'SIGNED_IN' && session) {
             currentUser = session.user;
             hideAuthScreen();
@@ -3695,7 +3683,6 @@
         }
         const oldQuadrant = getQuad(task.importance, task.urgency);
         Object.assign(task, quadMap[quadrant])
-        console.log('[TaskMatrix] quickAddMoveTo → moved task', { id: taskId, fromQuadrant: oldQuadrant, toQuadrant: quadrant });
         saveTasks()
         render()
         document.getElementById('quick-add-tray').style.display = 'none'
@@ -3730,7 +3717,6 @@
             recurDays: []
           };
           tasks.push(newTask);
-          console.log('[TaskMatrix] handleQuickAdd → task created', { id: newTask.id, quadrant: getQuad(newTask.importance, newTask.urgency) });
           input.value = '';
           render();
           updateStatsDisplay();
@@ -3899,7 +3885,6 @@
           recurDays: []
         };
         tasks.push(newTask);
-        console.log('[TaskMatrix] addVoiceTask → task created', { id: newTask.id, quadrant: voiceResult.quadrant, transcript: voiceResult.raw_transcript });
         render();
         updateStatsDisplay();
         _pendingSaveTasksPromise = saveTasks();
@@ -4238,7 +4223,6 @@
             }
           }
           else task.status = 'todo';
-          console.log('[TaskMatrix] toggleTaskStatus → status toggled', { id: task.id, newStatus: task.status });
           render();
           updateStatsDisplay();
           if (showCompleted) renderCompletedTasks();
@@ -4331,7 +4315,6 @@
         const task = tasks.find(t => t.id === id);
         if (!task) return;
         if (confirm('Delete this task?')) {
-          console.log('[TaskMatrix] deleteTask → deleting task', { id, softDeleteTimestamp: new Date().toISOString() });
           // GHOST-TASK FIX: soft-delete via Supabase deleted_at (cross-device)
           let supabaseDeleteSucceeded = false;
           if (task.supabaseId && currentUser) {
@@ -4870,7 +4853,6 @@
         }
         const oldQuadrant = getQuad(task.importance, task.urgency);
         Object.assign(task, quadMap[quadrant])
-        console.log('[TaskMatrix] moveTask → moved task', { id: taskId, fromQuadrant: oldQuadrant, toQuadrant: quadrant });
         saveTasks()
         render()
       }
@@ -5140,11 +5122,9 @@
           });
         }
 
-        console.log('[DEBUG 1] saveTaskDetails — notes from textarea:', JSON.stringify(taskData.notes));
         if (currentEditingTask) {
           Object.assign(currentEditingTask, taskData);
           currentEditingTask.modifiedAt = new Date().toISOString();
-          console.log('[DEBUG 1] currentEditingTask after assign — notes:', JSON.stringify(currentEditingTask.notes), 'supabaseId:', currentEditingTask.supabaseId);
         } else {
           const newTask = {
             id: Date.now(),
@@ -5326,7 +5306,6 @@
       let _realtimeInitialized = false;
       function setupRealtime(userId) {
         if (_realtimeInitialized) {
-          console.log('[realtime] setupRealtime() called again — skipping (already initialized)');
           return;
         }
         _realtimeInitialized = true;
@@ -5348,20 +5327,16 @@
             },
             async (payload) => {
               if (localChangeInFlight) {
-                console.log('[TaskMatrix] Realtime handler → skipped (localChangeInFlight)');
                 return;
               }
 
               if (payload.eventType === 'INSERT') {
-                console.log('[TaskMatrix] Realtime INSERT received', { id: payload.new.id, deleted_at: payload.new.deleted_at });
               } else if (payload.eventType === 'UPDATE') {
-                console.log('[TaskMatrix] Realtime UPDATE received', { id: payload.new.id });
               }
 
               // GHOST-TASK FIX: if the event carries a non-null deleted_at, treat it as a
               // delete — remove from local state and skip any re-render of this task
               if (payload.new && payload.new.deleted_at) {
-                console.log('[realtime] soft-delete received for task:', payload.new.id);
                 tasks = tasks.filter(t => t.supabaseId !== payload.new.id);
                 if (db) { try { await db.tasks.where('supabaseId').equals(payload.new.id).delete() } catch (e) { } }
                 render();
@@ -5382,7 +5357,6 @@
             if (status === 'SUBSCRIBED') {
               if (_tasksChannelReady) {
                 // Reconnect — flush pending local changes before pulling server state
-                console.log('[realtime] tasks channel reconnected — flushing')
                 flushPendingSync('realtime-tasks')
               }
               _tasksChannelReady = true
@@ -5396,7 +5370,6 @@
               _tasksRetryTimer = setTimeout(() => {
                 const state = tasksChannel.state;
                 if (state !== 'joined' && state !== 'joining') {
-                  console.log('[realtime] tasks channel retry subscribe()');
                   tasksChannel.subscribe((retryStatus) => {
                     if (retryStatus === 'SUBSCRIBED') {
                       _tasksChannelReady = true;
@@ -5429,7 +5402,6 @@
           .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
               if (_notesChannelReady) {
-                console.log('[realtime] notes channel reconnected — flushing')
                 flushPendingSync('realtime-notes')
               }
               _notesChannelReady = true
@@ -5441,7 +5413,6 @@
               _notesRetryTimer = setTimeout(() => {
                 const state = notesChannel.state;
                 if (state !== 'joined' && state !== 'joining') {
-                  console.log('[realtime] notes channel retry subscribe()');
                   notesChannel.subscribe((retryStatus) => {
                     if (retryStatus === 'SUBSCRIBED') {
                       _notesChannelReady = true;
@@ -5466,18 +5437,13 @@
             if (supabaseClient) {
               try {
                 const { data } = await supabaseClient.auth.getSession();
-                console.log('[TaskMatrix] visibilitychange → tab became visible', { hasSession: !!data?.session });
                 if (!data.session) {
                   // Session expired while tab was hidden — attempt silent refresh
-                  console.log('[auth] no session on tab focus — attempting refresh');
                   const { error: refreshError } = await supabaseClient.auth.refreshSession();
                   if (refreshError) {
-                    console.log('[TaskMatrix] refreshSession → failure', { error: refreshError.message || refreshError });
                     console.warn('[auth] refresh failed on tab focus:', refreshError);
                     showSessionExpiredBanner();
                   } else {
-                    console.log('[TaskMatrix] refreshSession → success');
-                    console.log('[auth] session refreshed successfully on tab focus');
                     setSyncState('synced');
                     // BUG 2 FIX: push any tasks that were written to Dexie
                     // during the expired session (pendingSync:1) now that we
@@ -5499,11 +5465,9 @@
             const tasksState = tasksChannel.state;
             const notesState = notesChannel.state;
             if (tasksState !== 'joined' && tasksState !== 'joining') {
-              console.log('[realtime] tab became visible — reconnecting tasks channel');
               tasksChannel.unsubscribe().then(() => tasksChannel.subscribe());
             }
             if (notesState !== 'joined' && notesState !== 'joining') {
-              console.log('[realtime] tab became visible — reconnecting notes channel');
               notesChannel.unsubscribe().then(() => notesChannel.subscribe());
             }
           }
