@@ -5303,7 +5303,13 @@
         }, 30000); // 30 seconds
       }
 
+      let _realtimeInitialized = false;
       function setupRealtime(userId) {
+        if (_realtimeInitialized) {
+          console.log('[realtime] setupRealtime() called again — skipping (already initialized)');
+          return;
+        }
+        _realtimeInitialized = true;
         // Track whether each channel has connected at least once so we can
         // distinguish initial connect (no flush needed) from reconnect (flush first).
         let _tasksChannelReady = false;
@@ -5467,16 +5473,18 @@
               }
             }
 
-            // Reconnect Realtime channels if they dropped while tab was hidden
+            // Reconnect Realtime channels if they dropped while tab was hidden.
+            // Must unsubscribe first — Supabase Realtime v2 throws if subscribe()
+            // is called on an already-joined channel instance.
             const tasksState = tasksChannel.state;
             const notesState = notesChannel.state;
             if (tasksState !== 'joined' && tasksState !== 'joining') {
               console.log('[realtime] tab became visible — reconnecting tasks channel');
-              tasksChannel.subscribe();
+              tasksChannel.unsubscribe().then(() => tasksChannel.subscribe());
             }
             if (notesState !== 'joined' && notesState !== 'joining') {
               console.log('[realtime] tab became visible — reconnecting notes channel');
-              notesChannel.subscribe();
+              notesChannel.unsubscribe().then(() => notesChannel.subscribe());
             }
           }
         });
@@ -5758,15 +5766,7 @@
     </div>
     <script src="src/config.js"></script>
     <script src="src/voiceTask.js"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/TaskMatrix_Supabase/sw.js')
-            .then(reg => console.log('SW registered:', reg.scope))
-            .catch(err => console.error('SW failed:', err))
-        })
-      }
-    </script>
+
 </body>
 
 </html>
