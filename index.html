@@ -2797,41 +2797,72 @@
 
             try {
               // ── Task flush ──────────────────────────────────────────
-              const pending = await db.tasks.where('pendingSync').equals(1).toArray()
+              let pending = await db.tasks.where('pendingSync').equals(1).toArray()
               console.log('[TaskMatrix] flushPendingSync → starting flush', { count: pending.length });
               console.log(`[flush:${source}] pending tasks: ${pending.length}`)
+
+              // OPTIMIZATION: Batch handle soft-deleted tasks
+              const localPurgeIds = []
+              const toCheckTasks = []
+              const toCheckIds = []
 
               for (const row of pending) {
                 try {
                   const task = JSON.parse(row.data)
-
-                  // GHOST-TASK FIX: skip rows that were deleted locally (deleted_at set)
                   if (task.deleted_at) {
-                    console.log(`[flush:${source}] skipping locally-deleted task: "${task.title}"`)
-                    try { await db.tasks.delete(row.localId) } catch (e) { }
-                    continue
+                    localPurgeIds.push(row.localId)
+                  } else if (task.supabaseId && currentUser) {
+                    toCheckTasks.push({ row, task })
+                    toCheckIds.push(task.supabaseId)
                   }
+                } catch (e) { }
+              }
 
-                  // GHOST-TASK FIX: if task has a server row, check it hasn't been
-                  // soft-deleted on the server (e.g. deleted from another device offline)
-                  if (task.supabaseId && currentUser) {
-                    try {
-                      const { data: serverRow } = await supabaseClient
-                        .from('tasks')
-                        .select('deleted_at')
-                        .eq('id', task.supabaseId)
-                        .eq('user_id', currentUser.id)
-                        .maybeSingle()
-                      if (serverRow?.deleted_at) {
-                        console.log(`[flush:${source}] task already soft-deleted on server — purging local: "${task.title}"`)
-                        try { await db.tasks.delete(row.localId) } catch (e) { }
-                        tasks = tasks.filter(t => t.id !== task.id)
-                        continue
+              if (localPurgeIds.length > 0) {
+                console.log(`[flush:${source}] purging ${localPurgeIds.length} locally-deleted tasks`)
+                try { await db.tasks.bulkDelete(localPurgeIds) } catch (e) { }
+              }
+
+              const serverPurgeLocalIds = []
+              const serverPurgeTaskIds = []
+              if (toCheckIds.length > 0) {
+                try {
+                  const { data: serverRows } = await supabaseClient
+                    .from('tasks')
+                    .select('id, deleted_at')
+                    .in('id', toCheckIds)
+                    .eq('user_id', currentUser.id)
+
+                  if (serverRows) {
+                    // Use a Map for O(1) lookup
+                    const toCheckMap = new Map(toCheckTasks.map(t => [t.task.supabaseId, t]))
+                    for (const sRow of serverRows) {
+                      if (sRow.deleted_at) {
+                        const match = toCheckMap.get(sRow.id)
+                        if (match) {
+                          serverPurgeLocalIds.push(match.row.localId)
+                          serverPurgeTaskIds.push(match.task.id)
+                        }
                       }
-                    } catch (checkErr) {
-                      console.warn(`[flush:${source}] server delete-check failed (proceeding with upsert):`, checkErr)
                     }
                   }
+                } catch (checkErr) {
+                  console.warn(`[flush:${source}] server delete-check failed (skipping batch purge):`, checkErr)
+                }
+              }
+
+              if (serverPurgeLocalIds.length > 0) {
+                console.log(`[flush:${source}] purging ${serverPurgeLocalIds.length} tasks already soft-deleted on server`)
+                try { await db.tasks.bulkDelete(serverPurgeLocalIds) } catch (e) { }
+                tasks = tasks.filter(t => !serverPurgeTaskIds.includes(t.id))
+              }
+
+              const allPurgedIds = new Set([...localPurgeIds, ...serverPurgeLocalIds])
+              pending = pending.filter(row => !allPurgedIds.has(row.localId))
+
+              for (const row of pending) {
+                try {
+                  const task = JSON.parse(row.data)
 
                   const upsertRow = {
                     ...(task.supabaseId ? { id: task.supabaseId } : {}),
