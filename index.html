@@ -2551,6 +2551,16 @@
       let _touchStartX = 0;
       let _touchStartY = 0;
 
+      function escapeHTML(str) {
+        if (!str) return '';
+        return str
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
       function handleTaskTouchStart(event, taskId) {
         _touchStartTime = Date.now();
         _touchStartX = event.touches[0].clientX;
@@ -3074,6 +3084,7 @@
             let allData = [];
 
             if (toUpdate.length > 0) {
+<<<<<<< cleanup-debug-logs-15192091614771872132
               const { data, error } = await supabaseClient
                 .from('tasks')
                 .upsert(toUpdate, { onConflict: 'id' })
@@ -3084,6 +3095,26 @@
                 throw error;
               }
               if (data) allData.push(...data);
+=======
+              console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
+              const upsertPromises = toUpdate.map(t =>
+                supabaseClient
+                  .from('tasks')
+                  .upsert(t, { onConflict: 'id' })
+                  .select()
+              );
+              const results = await Promise.all(upsertPromises);
+              for (const { data, error } of results) {
+                if (error) {
+                  console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
+                  console.error('[DEBUG 4] full error object:', JSON.stringify(error));
+                  throw error;
+                }
+                if (data) allData.push(...data);
+              }
+              console.log('[saveTasks] upsert OK — rows returned:', allData.length);
+              console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(allData[0]?.notes));
+>>>>>>> main
             }
 
             if (toInsert.length > 0) {
@@ -3265,23 +3296,28 @@
             const toUpdate = notesArray.filter(n => n.supabaseId);
 
             if (toUpdate.length > 0) {
-              const { error } = await supabaseClient
-                .from('sticky_notes')
-                .upsert(toUpdate.map(n => ({
-                  id: n.supabaseId,
-                  user_id: currentUser.id,
-                  title: n.title || '',  // TITLE FIX: was missing — caused title to revert after save
-                  content: n.content || '',
-                  color: n.color || 'yellow',
-                  position_x: n.x || 0,
-                  position_y: n.y || 0,
-                  pinned: n.pinned || false,
-                  updated_at: new Date().toISOString()
-                })), { onConflict: 'id' });
-              // BUG 1 FIX: make Supabase note upsert failures visible in DevTools
-              if (error) {
-                console.error('[saveNotes] Supabase upsert FAILED — notes remain in Dexie (pendingSync:1):', error);
-                throw error;
+              const upsertPromises = toUpdate.map(n =>
+                supabaseClient
+                  .from('sticky_notes')
+                  .upsert({
+                    id: n.supabaseId,
+                    user_id: currentUser.id,
+                    title: n.title || '',  // TITLE FIX: was missing — caused title to revert after save
+                    content: n.content || '',
+                    color: n.color || 'yellow',
+                    position_x: n.x || 0,
+                    position_y: n.y || 0,
+                    pinned: n.pinned || false,
+                    updated_at: new Date().toISOString()
+                  }, { onConflict: 'id' })
+              );
+              const results = await Promise.all(upsertPromises);
+              for (const { error } of results) {
+                // BUG 1 FIX: make Supabase note upsert failures visible in DevTools
+                if (error) {
+                  console.error('[saveNotes] Supabase upsert FAILED — notes remain in Dexie (pendingSync:1):', error);
+                  throw error;
+                }
               }
             }
 
@@ -3943,8 +3979,8 @@
           const timeAgo = getTimeAgo(note.modifiedAt);
           return `
           <div class="note-card ${note.color}" onclick="editNote('${note.id}')">
-            <div class="note-card-header">${note.title || 'Untitled'}</div>
-            <div class="note-card-content">${preview || 'Empty note'}</div>
+            <div class="note-card-header">${escapeHTML(note.title) || 'Untitled'}</div>
+            <div class="note-card-content">${escapeHTML(preview) || 'Empty note'}</div>
             <div class="note-card-footer">${timeAgo}</div>
           </div>
         `;
@@ -3968,10 +4004,10 @@
           return `
           <div class="note-card ${note.color}" onclick="editNote('${note.id}')">
             <div class="note-card-header">
-              <span>${note.title || 'Untitled'}</span>
+              <span>${escapeHTML(note.title) || 'Untitled'}</span>
               <span style="font-size: 12px;">📌</span>
             </div>
-            <div class="note-card-content">${preview || 'Empty note'}</div>
+            <div class="note-card-content">${escapeHTML(preview) || 'Empty note'}</div>
           </div>
         `;
         }).join('');
@@ -4347,7 +4383,7 @@
           return;
         }
         container.innerHTML = completedTasks.map(t =>
-          `<div class="task ${t.category}" style="opacity:0.8; cursor:pointer;" onclick="handleTaskInfoClick(event, ${t.id})"><div class="task-content"><button class="icon-btn" onclick="toggleTaskStatus(${t.id})">✓</button><div class="task-info"><div class="task-title completed">${t.title}</div></div><button class="icon-btn" onclick="deleteTask(${t.id})">×</button></div></div>`
+          `<div class="task ${t.category}" style="opacity:0.8; cursor:pointer;" onclick="handleTaskInfoClick(event, ${t.id})"><div class="task-content"><button class="icon-btn" onclick="toggleTaskStatus(${t.id})">✓</button><div class="task-info"><div class="task-title completed">${escapeHTML(t.title)}</div></div><button class="icon-btn" onclick="deleteTask(${t.id})">×</button></div></div>`
         ).join('');
       }
 
@@ -4695,8 +4731,8 @@
                   style="font-size:11px; color:var(--text-muted); margin-top:2px;
                   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
                   max-width:100%; cursor:pointer;"
-                  title="${task.notes.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}">
-                  ${task.notes.trim().substring(0, 60)}${task.notes.trim().length > 60 ? '\u2026' : ''}
+                  title="${escapeHTML(task.notes)}">
+                  ${escapeHTML(task.notes.trim().substring(0, 60))}${task.notes.trim().length > 60 ? '\u2026' : ''}
                 </div>`
                 : '';
               const taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
@@ -4705,7 +4741,7 @@
                 <button class="icon-btn" onclick="event.stopPropagation(); toggleTaskStatus(${task.id})" style="color:${statusColor}; font-size:20px;">${statusIcon}</button>
                 <div class="task-info">
                   <div class="task-title ${task.status === 'completed' ? 'completed' : ''}">
-                    ${task.title}${recurBadge}
+                    ${escapeHTML(task.title)}${recurBadge}
                   </div>
                   ${notePreview}
                   ${dueBadgeHtml}
@@ -4883,7 +4919,7 @@
           const bg = isOverdue ? 'var(--danger-bg)' : quadColors[quad]
           const color = isOverdue ? 'var(--danger)' : quadTextColors[quad]
           const overdueMarker = isOverdue ? '⚠ ' : ''
-          const safeTitle = task.title.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+          const safeTitle = escapeHTML(task.title);
           return `
           <div onclick="openTaskModal(${task.id})" style="
             background:${bg}; color:${color};
@@ -4893,7 +4929,7 @@
             border:1px solid ${isOverdue ? 'var(--danger)' : 'transparent'};
             max-width:200px; overflow:hidden; text-overflow:ellipsis;
           " title="${safeTitle}">
-            ${overdueMarker}${task.title}
+            ${overdueMarker}${safeTitle}
           </div>
         `
         }).join('')
@@ -5228,7 +5264,7 @@
         }
         listEl.innerHTML = archived.map(task => `
         <div class="archived-task-row">
-          <span class="archived-title">${task.title.replace(/</g, '&lt;')}</span>
+          <span class="archived-title">${escapeHTML(task.title)}</span>
           <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${task.dueDate || ''}</span>
           <button class="restore-btn" onclick="restoreTask(${task.id})">Restore</button>
         </div>
@@ -5445,7 +5481,12 @@
         (currentEditingTask.tags || []).forEach(tag => {
           const tagEl = document.createElement('div');
           tagEl.className = 'tag';
-          tagEl.innerHTML = tag + '<button class="tag-remove" onclick="removeTag(\'' + tag + '\')">×</button>';
+          tagEl.textContent = tag;
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'tag-remove';
+          removeBtn.textContent = '×';
+          removeBtn.onclick = () => removeTag(tag);
+          tagEl.appendChild(removeBtn);
           container.appendChild(tagEl);
         });
         const input = document.createElement('input');
@@ -5491,7 +5532,7 @@
           return;
         }
         container.innerHTML = currentEditingTask.subtasks.map((subtask, index) =>
-          `<div class="subtask-item"><input type="checkbox" class="subtask-checkbox" ${subtask.completed ? 'checked' : ''} onchange="toggleSubtask(${index})"><span class="subtask-text ${subtask.completed ? 'completed' : ''}">${subtask.text}</span><button class="subtask-delete" onclick="deleteSubtask(${index})">×</button></div>`
+          `<div class="subtask-item"><input type="checkbox" class="subtask-checkbox" ${subtask.completed ? 'checked' : ''} onchange="toggleSubtask(${index})"><span class="subtask-text ${subtask.completed ? 'completed' : ''}">${escapeHTML(subtask.text)}</span><button class="subtask-delete" onclick="deleteSubtask(${index})">×</button></div>`
         ).join('');
       }
 
