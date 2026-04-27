@@ -3659,7 +3659,7 @@
         }, 4000)
       }
 
-      // SCHEDULE-TASK FIX: make async so we can await the handleQuickAdd INSERT
+      // Note: This is async so we can await the handleQuickAdd INSERT
       // before saving the quadrant change. Without the await, quickAddMoveTo runs
       // while the first saveTasks() INSERT is still in-flight (task has no
       // supabaseId yet), causing a second INSERT → two server rows → task reverts
