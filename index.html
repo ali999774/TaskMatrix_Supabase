@@ -4,6 +4,7 @@
 <head>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.js"></script>
+  <script src="src/config.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TaskMatrix</title>
@@ -2464,17 +2465,17 @@
 
     <script>
       // ── Supabase Config ──────────────────────────────────────────
-      // TODO: Replace with your actual Supabase project credentials
-      const SUPABASE_URL = 'https://xulnxwwwjpvgsaqnsllo.supabase.co'
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1bG54d3d3anB2Z3NhcW5zbGxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMTQwMzYsImV4cCI6MjA4OTc5MDAzNn0.lWoihSm-kv_Ep5fXQZ55H4YU5wXmmKvK4LVLSBIVYic'
+      // Configured via src/config.js (gitignored) for environment parameters
+      const SUPABASE_URL = window.SUPABASE_URL || '';
+      const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || '';
       // Guard against CDN load failure (offline first visit) — null client is
       // handled in init() which falls back to Dexie cache instead of crashing.
       let supabaseClient = null;
       try {
-        if (window.supabase) {
+        if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
           supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         } else {
-          console.warn('[Supabase] library not loaded — offline-only mode active');
+          console.warn('[Supabase] library not loaded or credentials missing — offline-only mode active');
         }
       } catch (err) {
         console.warn('[Supabase] createClient failed:', err);
@@ -5753,7 +5754,6 @@
         Sign in with Google
       </button>
     </div>
-    <script src="src/config.js"></script>
     <script src="src/voiceTask.js"></script>
 
 </body>
