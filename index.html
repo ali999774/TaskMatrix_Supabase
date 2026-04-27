@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+  <script src="src/config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.js"></script>
   <meta charset="UTF-8">
@@ -2464,9 +2465,13 @@
 
     <script>
       // ── Supabase Config ──────────────────────────────────────────
-      // TODO: Replace with your actual Supabase project credentials
-      const SUPABASE_URL = 'https://xulnxwwwjpvgsaqnsllo.supabase.co'
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1bG54d3d3anB2Z3NhcW5zbGxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMTQwMzYsImV4cCI6MjA4OTc5MDAzNn0.lWoihSm-kv_Ep5fXQZ55H4YU5wXmmKvK4LVLSBIVYic'
+      const SUPABASE_URL = window.SUPABASE_URL;
+      const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY;
+
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        console.error('[Supabase] Missing credentials! Please ensure src/config.js defines window.SUPABASE_URL and window.SUPABASE_ANON_KEY.');
+      }
+
       // Guard against CDN load failure (offline first visit) — null client is
       // handled in init() which falls back to Dexie cache instead of crashing.
       let supabaseClient = null;
@@ -5753,7 +5758,6 @@
         Sign in with Google
       </button>
     </div>
-    <script src="src/config.js"></script>
     <script src="src/voiceTask.js"></script>
 
 </body>
