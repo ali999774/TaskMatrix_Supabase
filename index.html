@@ -2553,7 +2553,7 @@
 
       function escapeHTML(str) {
         if (!str) return '';
-        return str
+        return String(str)
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
@@ -3978,10 +3978,10 @@
           const preview = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
           const timeAgo = getTimeAgo(note.modifiedAt);
           return `
-          <div class="note-card ${note.color}" onclick="editNote('${note.id}')">
+          <div class="note-card ${escapeHTML(note.color)}" onclick="editNote('${escapeHTML(note.id)}')">
             <div class="note-card-header">${escapeHTML(note.title) || 'Untitled'}</div>
             <div class="note-card-content">${escapeHTML(preview) || 'Empty note'}</div>
-            <div class="note-card-footer">${timeAgo}</div>
+            <div class="note-card-footer">${escapeHTML(timeAgo)}</div>
           </div>
         `;
         }).join('');
@@ -4002,7 +4002,7 @@
         grid.innerHTML = pinnedNotes.map(note => {
           const preview = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
           return `
-          <div class="note-card ${note.color}" onclick="editNote('${note.id}')">
+          <div class="note-card ${escapeHTML(note.color)}" onclick="editNote('${escapeHTML(note.id)}')">
             <div class="note-card-header">
               <span>${escapeHTML(note.title) || 'Untitled'}</span>
               <span style="font-size: 12px;">📌</span>
