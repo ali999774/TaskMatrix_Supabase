@@ -2486,7 +2486,7 @@
       let db = null
       try {
         db = new Dexie('taskmatrix')
-        // GHOST-TASK FIX: v3 — drop local tombstone store; cross-device deletes
+        // V3 — drop local tombstone store; cross-device deletes
         // are now tracked server-side via `deleted_at` on the Supabase tasks table.
         db.version(1).stores({
           tasks: 'localId, supabaseId, updatedAt, pendingSync',
@@ -2809,13 +2809,13 @@
                 try {
                   const task = JSON.parse(row.data)
 
-                  // GHOST-TASK FIX: skip rows that were deleted locally (deleted_at set)
+                  // Skip rows that were deleted locally (deleted_at set)
                   if (task.deleted_at) {
                     try { await db.tasks.delete(row.localId) } catch (e) { }
                     continue
                   }
 
-                  // GHOST-TASK FIX: if task has a server row, check it hasn't been
+                  // If task has a server row, check it hasn't been
                   // soft-deleted on the server (e.g. deleted from another device offline)
                   if (task.supabaseId && currentUser) {
                     try {
@@ -3186,7 +3186,7 @@
             .from('tasks')
             .select('*')
             .eq('user_id', currentUser.id)
-            .is('deleted_at', null)  // GHOST-TASK FIX: never return soft-deleted tasks
+            .is('deleted_at', null)  // Never return soft-deleted tasks
             .order('created_at', { ascending: true });
           if (error) throw error;
 
@@ -4315,7 +4315,7 @@
         const task = tasks.find(t => t.id === id);
         if (!task) return;
         if (confirm('Delete this task?')) {
-          // GHOST-TASK FIX: soft-delete via Supabase deleted_at (cross-device)
+          // Soft-delete via Supabase deleted_at (cross-device)
           let supabaseDeleteSucceeded = false;
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
@@ -5150,7 +5150,7 @@
         if (!currentEditingTask) return;
         if (confirm('Delete this task?')) {
           const task = currentEditingTask;
-          // GHOST-TASK FIX: soft-delete via Supabase deleted_at (cross-device)
+          // Soft-delete via Supabase deleted_at (cross-device)
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
             try {
@@ -5334,7 +5334,7 @@
               } else if (payload.eventType === 'UPDATE') {
               }
 
-              // GHOST-TASK FIX: if the event carries a non-null deleted_at, treat it as a
+              // If the event carries a non-null deleted_at, treat it as a
               // delete — remove from local state and skip any re-render of this task
               if (payload.new && payload.new.deleted_at) {
                 tasks = tasks.filter(t => t.supabaseId !== payload.new.id);
