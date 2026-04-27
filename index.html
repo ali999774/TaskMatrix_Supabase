@@ -2486,7 +2486,7 @@
       let db = null
       try {
         db = new Dexie('taskmatrix')
-        // GHOST-TASK FIX: v3 — drop local tombstone store; cross-device deletes
+        // v3 — drop local tombstone store; cross-device deletes
         // are now tracked server-side via `deleted_at` on the Supabase tasks table.
         db.version(1).stores({
           tasks: 'localId, supabaseId, updatedAt, pendingSync',
@@ -2809,13 +2809,13 @@
                 try {
                   const task = JSON.parse(row.data)
 
-                  // GHOST-TASK FIX: skip rows that were deleted locally (deleted_at set)
+                  // skip rows that were deleted locally (deleted_at set)
                   if (task.deleted_at) {
                     try { await db.tasks.delete(row.localId) } catch (e) { }
                     continue
                   }
 
-                  // GHOST-TASK FIX: if task has a server row, check it hasn't been
+                  // if task has a server row, check it hasn't been
                   // soft-deleted on the server (e.g. deleted from another device offline)
                   if (task.supabaseId && currentUser) {
                     try {
@@ -2914,7 +2914,7 @@
                       .upsert({
                         id: note.supabaseId,
                         user_id: currentUser.id,
-                        title: note.title || '',  // TITLE FIX: also apply to offline-flush path
+                        title: note.title || '',
                         content: note.content || '',
                         color: note.color || 'yellow',
                         position_x: note.x || 0,
@@ -3084,33 +3084,24 @@
             let allData = [];
 
             if (toUpdate.length > 0) {
-              console.log('[saveTasks] batch upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
-              const { data, error } = await supabaseClient
-                .from('tasks')
-                .upsert(toUpdate, { onConflict: 'id' })
-                .select();
-
-              if (error) {
-                console.error('[saveTasks] batch upsert ERROR:', error.code, error.message, error.details);
-                console.error('[saveTasks] falling back to per-row upserts to isolate failure.');
-                // Fallback loop for per-row error isolation
-                for (const t of toUpdate) {
-                  const { data: rowData, error: rowError } = await supabaseClient
-                    .from('tasks')
-                    .upsert(t, { onConflict: 'id' })
-                    .select();
-                  if (rowError) {
-                    console.error('[saveTasks] per-row upsert ERROR for task:', t.id, rowError?.code, rowError?.message);
-                    continue; // Isolate error, do not abort batch
-                  }
-                  if (rowData) allData.push(...rowData);
+              console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
+              const upsertPromises = toUpdate.map(t =>
+                supabaseClient
+                  .from('tasks')
+                  .upsert(t, { onConflict: 'id' })
+                  .select()
+              );
+              const results = await Promise.all(upsertPromises);
+              for (const { data, error } of results) {
+                if (error) {
+                  console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
+                  console.error('[DEBUG 4] full error object:', JSON.stringify(error));
+                  throw error;
                 }
-                // Throw original error to fall through to handleSupabaseError
-                throw error;
+                if (data) allData.push(...data);
               }
-
-              if (data) allData.push(...data);
-              console.log('[saveTasks] batch upsert OK — rows returned:', allData.length);
+              console.log('[saveTasks] upsert OK — rows returned:', allData.length);
+              console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(allData[0]?.notes));
             }
 
             if (toInsert.length > 0) {
@@ -3182,7 +3173,7 @@
             .from('tasks')
             .select('*')
             .eq('user_id', currentUser.id)
-            .is('deleted_at', null)  // GHOST-TASK FIX: never return soft-deleted tasks
+            .is('deleted_at', null)  // never return soft-deleted tasks
             .order('created_at', { ascending: true });
           if (error) throw error;
 
@@ -3298,7 +3289,7 @@
                   .upsert({
                     id: n.supabaseId,
                     user_id: currentUser.id,
-                    title: n.title || '',  // TITLE FIX: was missing — caused title to revert after save
+                    title: n.title || '',
                     content: n.content || '',
                     color: n.color || 'yellow',
                     position_x: n.x || 0,
@@ -3655,7 +3646,7 @@
         }, 4000)
       }
 
-      // SCHEDULE-TASK FIX: make async so we can await the handleQuickAdd INSERT
+      // Note: This is async so we can await the handleQuickAdd INSERT
       // before saving the quadrant change. Without the await, quickAddMoveTo runs
       // while the first saveTasks() INSERT is still in-flight (task has no
       // supabaseId yet), causing a second INSERT → two server rows → task reverts
@@ -4311,7 +4302,7 @@
         const task = tasks.find(t => t.id === id);
         if (!task) return;
         if (confirm('Delete this task?')) {
-          // GHOST-TASK FIX: soft-delete via Supabase deleted_at (cross-device)
+          // soft-delete via Supabase deleted_at (cross-device)
           let supabaseDeleteSucceeded = false;
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
@@ -5146,7 +5137,7 @@
         if (!currentEditingTask) return;
         if (confirm('Delete this task?')) {
           const task = currentEditingTask;
-          // GHOST-TASK FIX: soft-delete via Supabase deleted_at (cross-device)
+          // soft-delete via Supabase deleted_at (cross-device)
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
             try {
@@ -5330,7 +5321,7 @@
               } else if (payload.eventType === 'UPDATE') {
               }
 
-              // GHOST-TASK FIX: if the event carries a non-null deleted_at, treat it as a
+              // if the event carries a non-null deleted_at, treat it as a
               // delete — remove from local state and skip any re-render of this task
               if (payload.new && payload.new.deleted_at) {
                 tasks = tasks.filter(t => t.supabaseId !== payload.new.id);
