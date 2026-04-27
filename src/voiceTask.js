@@ -38,7 +38,7 @@ async function parseTranscript(transcript) {
       messages: [
         {
           role: 'system',
-          content: 'You are a voice input parser for a task manager. Given a spoken input, detect the intent and return ONLY valid JSON.\n\nIf the user says \'note:\' or \'note to self\' at the start, return:\n{ "intent": "note", "content": "<cleaned up text without the prefix>" }\n\nOtherwise treat it as a task and return:\n{ "intent": "task", "title": "<short task name max 6 words>", "quadrant": "<do_first|schedule|delegate|eliminate>" }\n\nNo explanation, no markdown, just JSON.'
+          content: 'You are a task parser for an Eisenhower Matrix. Given a spoken task description, return ONLY valid JSON with two fields: title (short task name, max 6 words) and quadrant (one of: do_first, schedule, delegate, eliminate). No explanation, no markdown, just JSON.'
         },
         {
           role: 'user',
@@ -65,15 +65,6 @@ async function parseTranscript(transcript) {
     throw new Error(`Invalid JSON from xAI: ${e.message}`);
   }
 
-  if (parsed.intent === 'note') {
-    if (!parsed.content) {
-      console.error('[voiceTask] xAI parsed note object:', parsed);
-      throw new Error('Missing content field in note response');
-    }
-    return parsed;
-  }
-
-  // Task intent validation
   const validQuadrants = ['do_first', 'schedule', 'delegate', 'eliminate'];
   if (!parsed.title || !validQuadrants.includes(parsed.quadrant)) {
     console.error('[voiceTask] xAI parsed object:', parsed);
@@ -83,28 +74,38 @@ async function parseTranscript(transcript) {
   return parsed;
 }
 
-async function handleVoiceNote(content) {
-  const timestamp = new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit'
-  });
+async function transcribeAndSaveNote(audioBlob) {
+  if (!window._tmNotes || !window._tmRenderNotes || !window._tmSaveNotes) {
+    console.error('[voiceTask] notes bridge not ready — window._tm* undefined');
+    throw new Error('Notes bridge not initialized');
+  }
 
-  const note = {
-    id: Date.now(),
-    title: `🎤 Voice Note — ${timestamp}`,
-    content: content,
-    pinned: false,
-    color: 'yellow',
-    createdAt: new Date().toISOString(),
-    modifiedAt: new Date().toISOString()
-  };
+  try {
+    const transcript = await transcribeAudio(audioBlob);
+    console.log('[voiceTask] transcribeAndSaveNote → transcript:', transcript);
 
-  window._tmNotes.push(note);
-  window._tmRenderNotes();
-  window._tmRenderPinnedNotes();
-  window._tmSaveNotes();
+    const note = {
+      id: Date.now(),
+      title: `🎤 ${new Date().toLocaleString('en-US', {
+        month: 'short', day: 'numeric',
+        hour: 'numeric', minute: '2-digit'
+      })}`,
+      content: transcript,
+      pinned: false,
+      color: 'yellow'
+    };
 
-  console.log('[voiceTask] handleVoiceNote → note created', { id: note.id, title: note.title });
+    window._tmNotes.push(note);
+    window._tmRenderNotes();
+    window._tmRenderPinnedNotes();
+    window._tmSaveNotes();
+
+    console.log('[voiceTask] transcribeAndSaveNote → note created', { id: note.id, title: note.title });
+    return { intent: 'note', content: transcript };
+  } catch (err) {
+    if (typeof setVoiceNoteBtnState === 'function') setVoiceNoteBtnState('error');
+    throw err;
+  }
 }
 
 async function handleVoiceTask(audioBlob) {
@@ -113,12 +114,6 @@ async function handleVoiceTask(audioBlob) {
 
   const parsed = await parseTranscript(rawTranscript);
 
-  if (parsed.intent === 'note') {
-    await handleVoiceNote(parsed.content);
-    return { intent: 'note' };
-  }
-
-  // Task intent — existing logic unchanged
   const quadrantMap = {
     do_first:  'do-first',
     schedule:  'schedule',

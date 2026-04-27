@@ -1772,8 +1772,16 @@
     .voice-mic-btn.voice-recording { color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.3); border-radius: 8px; }
     .voice-mic-btn.voice-processing { color: var(--text-muted); opacity: 0.6; }
     .voice-mic-btn.voice-done { color: #16a34a; }
-    .voice-mic-btn.voice-note-done { color: #ca8a04; }
-    .voice-mic-btn.voice-error { color: #f59e0b; }
+    .voice-mic-btn.voice-error { color: #dc2626; }
+    @keyframes voiceNotePulse {
+      0%, 100% { box-shadow: 0 0 0 2px rgba(202,138,4,0.4); }
+      50%       { box-shadow: 0 0 0 5px rgba(202,138,4,0.15); }
+    }
+    .voice-note-btn { transition: all 0.15s; }
+    .voice-note-btn.vnote-recording { color: #ca8a04; animation: voiceNotePulse 0.9s ease-in-out infinite; border-radius: 8px; }
+    .voice-note-btn.vnote-processing { opacity: 0.6; }
+    .voice-note-btn.vnote-done { color: #16a34a; }
+    .voice-note-btn.vnote-error { color: #dc2626; }
   </style>
 </head>
 
@@ -1789,6 +1797,9 @@
       <button type="button" id="voice-mic-btn" class="zen-icon-btn voice-mic-btn" title="Hold to speak"
         onmousedown="startVoiceRecording(event)" onmouseup="stopVoiceRecording(event)"
         ontouchstart="startVoiceRecording(event)" ontouchend="stopVoiceRecording(event)">🎤</button>
+      <button type="button" id="voice-note-btn" class="zen-icon-btn voice-note-btn" title="Voice note"
+        onmousedown="startVoiceNoteRecording(event)" onmouseup="stopVoiceNoteRecording(event)"
+        ontouchstart="startVoiceNoteRecording(event)" ontouchend="stopVoiceNoteRecording(event)">📝</button>
       <div class="zen-actions">
         <button class="zen-icon-btn" onclick="toggleTheme()" title="Toggle Dark Mode" id="theme-toggle">🌙</button>
         <div id="sync-dot" class="status-indicator" title="Synced" style="cursor:default;"></div>
@@ -2500,7 +2511,10 @@
 
       let tasks = [];
       let notes = [];
-      window._tmNotes = notes;
+      Object.defineProperty(window, '_tmNotes', {
+        get: function() { return notes; },
+        configurable: true
+      });
       let userStats = { xp: 0, level: 1, totalCompleted: 0, weeklyGoal: 10, weeklyCompleted: 0 };
       let draggedTask = null;
       let showCompleted = false;
@@ -3714,12 +3728,11 @@
       let _voiceMimeType = 'audio/webm';
 
       const _voiceBtnStates = {
-        idle:       { text: '🎤', title: 'Hold to speak',   cls: '',                  disabled: false },
-        recording:  { text: '🔴', title: 'Release to send', cls: 'voice-recording',   disabled: false },
-        processing: { text: '⏳', title: 'Processing...',   cls: 'voice-processing',  disabled: true  },
-        done:       { text: '✓',  title: 'Task added ✓',    cls: 'voice-done',        disabled: false },
-        'note-done':{ text: '📝', title: 'Note saved ✓',    cls: 'voice-note-done',   disabled: false },
-        error:      { text: '⚠️', title: 'Try again',       cls: 'voice-error',       disabled: false }
+        idle:       { text: '🎤', title: 'Hold to speak',   cls: '',                 disabled: false },
+        recording:  { text: '🔴', title: 'Release to send', cls: 'voice-recording',  disabled: false },
+        processing: { text: '⏳', title: 'Processing...',   cls: 'voice-processing', disabled: true  },
+        done:       { text: '✓',  title: 'Task added ✓',    cls: 'voice-done',       disabled: false },
+        error:      { text: '⚠️', title: 'Try again',       cls: 'voice-error',      disabled: false }
       };
 
       function setVoiceBtnState(state) {
@@ -3730,8 +3743,8 @@
         btn.title = s.title;
         btn.disabled = s.disabled;
         btn.className = 'zen-icon-btn voice-mic-btn' + (s.cls ? ' ' + s.cls : '');
-        if (state === 'done' || state === 'note-done' || state === 'error') {
-          setTimeout(() => setVoiceBtnState('idle'), 2500);
+        if (state === 'done' || state === 'error') {
+          setTimeout(() => setVoiceBtnState('idle'), 2000);
         }
       }
 
@@ -3744,7 +3757,7 @@
           _voiceMimeType = mimeType;
           _voiceAudioChunks = [];
           _voiceMediaRecorder = new MediaRecorder(stream, { mimeType });
-          _voiceMediaRecorder._mimeType = mimeType; // store for later use
+          _voiceMediaRecorder._mimeType = mimeType;
           _voiceMediaRecorder.ondataavailable = ev => _voiceAudioChunks.push(ev.data);
           _voiceMediaRecorder.start();
           setVoiceBtnState('recording');
@@ -3764,18 +3777,78 @@
           _voiceMediaRecorder = null;
           try {
             const voiceResult = await handleVoiceTask(audioBlob);
-            if (voiceResult.intent === 'note') {
-              setVoiceBtnState('note-done');
-            } else {
-              await addVoiceTask(voiceResult);
-              setVoiceBtnState('done');
-            }
+            await addVoiceTask(voiceResult);
+            setVoiceBtnState('done');
           } catch (err) {
             console.error('[voiceTask] pipeline failed:', err);
             setVoiceBtnState('error');
           }
         };
         _voiceMediaRecorder.stop();
+      }
+
+      // ── Voice-to-note ────────────────────────────────────────────
+      let _voiceNoteMediaRecorder = null;
+      let _voiceNoteAudioChunks = [];
+      let _voiceNoteMimeType = 'audio/webm';
+
+      const _voiceNoteBtnStates = {
+        idle:       { text: '📝', title: 'Voice note',       cls: '',               disabled: false },
+        recording:  { text: '🔴', title: 'Release to save',  cls: 'vnote-recording', disabled: false },
+        processing: { text: '⏳', title: 'Saving note...',   cls: 'vnote-processing',disabled: true  },
+        done:       { text: '✓',  title: 'Note saved ✓',     cls: 'vnote-done',      disabled: false },
+        error:      { text: '⚠️', title: 'Try again',        cls: 'vnote-error',     disabled: false }
+      };
+
+      function setVoiceNoteBtnState(state) {
+        const btn = document.getElementById('voice-note-btn');
+        if (!btn) return;
+        const s = _voiceNoteBtnStates[state] || _voiceNoteBtnStates.idle;
+        btn.textContent = s.text;
+        btn.title = s.title;
+        btn.disabled = s.disabled;
+        btn.className = 'zen-icon-btn voice-note-btn' + (s.cls ? ' ' + s.cls : '');
+        if (state === 'done' || state === 'error') {
+          setTimeout(() => setVoiceNoteBtnState('idle'), 2000);
+        }
+      }
+
+      async function startVoiceNoteRecording(e) {
+        e.preventDefault();
+        if (_voiceNoteMediaRecorder && _voiceNoteMediaRecorder.state === 'recording') return;
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const mimeType = 'audio/mp4';
+          _voiceNoteMimeType = mimeType;
+          _voiceNoteAudioChunks = [];
+          _voiceNoteMediaRecorder = new MediaRecorder(stream, { mimeType });
+          _voiceNoteMediaRecorder._mimeType = mimeType;
+          _voiceNoteMediaRecorder.ondataavailable = ev => _voiceNoteAudioChunks.push(ev.data);
+          _voiceNoteMediaRecorder.start();
+          setVoiceNoteBtnState('recording');
+        } catch (err) {
+          console.error('[voiceNote] mic access failed:', err);
+          setVoiceNoteBtnState('error');
+        }
+      }
+
+      async function stopVoiceNoteRecording(e) {
+        e.preventDefault();
+        if (!_voiceNoteMediaRecorder || _voiceNoteMediaRecorder.state !== 'recording') return;
+        setVoiceNoteBtnState('processing');
+        _voiceNoteMediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(_voiceNoteAudioChunks, { type: _voiceNoteMimeType });
+          _voiceNoteMediaRecorder.stream.getTracks().forEach(t => t.stop());
+          _voiceNoteMediaRecorder = null;
+          try {
+            await transcribeAndSaveNote(audioBlob);
+            setVoiceNoteBtnState('done');
+          } catch (err) {
+            console.error('[voiceNote] pipeline failed:', err);
+            setVoiceNoteBtnState('error');
+          }
+        };
+        _voiceNoteMediaRecorder.stop();
       }
 
       async function addVoiceTask(voiceResult) {
