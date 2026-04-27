@@ -34,7 +34,7 @@ async function parseTranscript(transcript) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'grok-3-mini',
+      model: 'grok-4-1-fast',
       messages: [
         {
           role: 'system',
