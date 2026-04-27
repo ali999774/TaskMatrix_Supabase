@@ -2899,66 +2899,131 @@
               }
 
               // ── Notes flush ─────────────────────────────────────────
-              // Push each pending note individually so a Supabase error on one
-              // note leaves it in the retry queue rather than losing it.
-              const pendingNotes = await db.notes.where('pendingSync').equals(1).toArray()
+              const pendingNotes = await db.notes.where('pendingSync').equals(1).toArray();
+              const toUpdateNotes = [];
+              const toInsertNotes = [];
+              const noteRowsMap = new Map();
 
               for (const noteRow of pendingNotes) {
                 try {
-                  const note = JSON.parse(noteRow.data)
-                  let noteError = null
-
+                  const note = JSON.parse(noteRow.data);
+                  noteRowsMap.set(note.id, { row: noteRow, note });
                   if (note.supabaseId) {
-                    const { error } = await supabaseClient
-                      .from('sticky_notes')
-                      .upsert({
-                        id: note.supabaseId,
-                        user_id: currentUser.id,
-                        title: note.title || '',  // TITLE FIX: also apply to offline-flush path
-                        content: note.content || '',
-                        color: note.color || 'yellow',
-                        position_x: note.x || 0,
-                        position_y: note.y || 0,
-                        pinned: note.pinned || false,
-                        updated_at: new Date().toISOString()
-                      }, { onConflict: 'id' })
-                    noteError = error
+                    toUpdateNotes.push({
+                      id: note.supabaseId,
+                      user_id: currentUser.id,
+                      title: note.title || '',
+                      content: note.content || '',
+                      color: note.color || 'yellow',
+                      position_x: note.x || 0,
+                      position_y: note.y || 0,
+                      pinned: note.pinned || false,
+                      updated_at: new Date().toISOString()
+                    });
                   } else {
-                    const { data, error } = await supabaseClient
-                      .from('sticky_notes')
-                      .insert({
-                        user_id: currentUser.id,
-                        content: note.content || '',
-                        color: note.color || 'yellow',
-                        position_x: note.x || 0,
-                        position_y: note.y || 0,
-                        pinned: note.pinned || false,
-                        created_at: note.createdAt || new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                      })
-                      .select()
-                    noteError = error
-                    if (!error && data?.[0]?.id) {
-                      note.supabaseId = data[0].id
-                      const memNote = (typeof notes !== 'undefined' ? notes : []).find(n => n.id === note.id)
-                      if (memNote) memNote.supabaseId = data[0].id
+                    toInsertNotes.push({
+                      user_id: currentUser.id,
+                      title: note.title || '',
+                      content: note.content || '',
+                      color: note.color || 'yellow',
+                      position_x: note.x || 0,
+                      position_y: note.y || 0,
+                      pinned: note.pinned || false,
+                      created_at: note.createdAt || new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                      _localId: note.id // temporary field for mapping back
+                    });
+                  }
+                } catch (e) {
+                  console.error(`[flush:${source}] failed to parse note row`, e);
+                }
+              }
+
+              async function processSequentialNote(payload, isInsert) {
+                const localId = payload._localId;
+                if (isInsert) delete payload._localId;
+
+                const query = isInsert
+                  ? supabaseClient.from('sticky_notes').insert(payload).select()
+                  : supabaseClient.from('sticky_notes').upsert(payload, { onConflict: 'id' });
+
+                const { data, error } = await query;
+                const noteInfo = noteRowsMap.get(localId) || Array.from(noteRowsMap.values()).find(info => info.note.supabaseId === payload.id);
+                if (!noteInfo) return;
+
+                if (error) {
+                  console.error(`[flush:${source}] note FAILED (queued for retry): id=${noteInfo.note.id}`, error);
+                } else {
+                  if (isInsert && data?.[0]?.id) {
+                    noteInfo.note.supabaseId = data[0].id;
+                    const memNote = (typeof notes !== 'undefined' ? notes : []).find(n => n.id === noteInfo.note.id);
+                    if (memNote) memNote.supabaseId = data[0].id;
+                  }
+                  await db.notes.put({
+                    ...noteInfo.row,
+                    supabaseId: noteInfo.note.supabaseId || null,
+                    pendingSync: 0,
+                    data: JSON.stringify(noteInfo.note)
+                  });
+                }
+              }
+
+              if (toUpdateNotes.length > 0) {
+                try {
+                  const { error } = await supabaseClient.from('sticky_notes').upsert(toUpdateNotes, { onConflict: 'id' });
+                  if (error) throw error;
+                  for (const payload of toUpdateNotes) {
+                    const noteInfo = Array.from(noteRowsMap.values()).find(info => info.note.supabaseId === payload.id);
+                    if (noteInfo) {
+                      await db.notes.put({
+                        ...noteInfo.row,
+                        supabaseId: noteInfo.note.supabaseId || null,
+                        pendingSync: 0,
+                        data: JSON.stringify(noteInfo.note)
+                      });
                     }
                   }
-
-                  if (noteError) {
-                    // noteRow keeps pendingSync:1 — will retry on next flush
-                    console.error(`[flush:${source}] note FAILED (queued for retry): id=${note.id}`, noteError)
-                  } else {
-                    await db.notes.put({
-                      ...noteRow,
-                      supabaseId: note.supabaseId || null,
-                      pendingSync: 0,
-                      data: JSON.stringify(note)
-                    })
+                } catch (batchErr) {
+                  console.warn(`[flush:${source}] notes batch update failed, falling back to sequential`, batchErr);
+                  for (const payload of toUpdateNotes) {
+                    await processSequentialNote(payload, false);
                   }
-                } catch (noteRowErr) {
-                  // noteRow keeps pendingSync:1 — will retry on next flush
-                  console.error(`[flush:${source}] note row error (queued for retry):`, noteRowErr)
+                }
+              }
+
+              if (toInsertNotes.length > 0) {
+                try {
+                  const insertPayloads = toInsertNotes.map(n => { const { _localId, ...rest } = n; return rest; });
+                  const { data, error } = await supabaseClient.from('sticky_notes').insert(insertPayloads).select();
+                  if (error) throw error;
+
+                  // Map responses back. Since order might not be strictly guaranteed without matching a unique key,
+                  // we use title + content as fallback if _localId is stripped, but we can also match by order if length matches.
+                  if (data && data.length === toInsertNotes.length) {
+                    for (let i = 0; i < data.length; i++) {
+                      const serverRow = data[i];
+                      const localId = toInsertNotes[i]._localId;
+                      const noteInfo = noteRowsMap.get(localId);
+                      if (noteInfo) {
+                        noteInfo.note.supabaseId = serverRow.id;
+                        const memNote = (typeof notes !== 'undefined' ? notes : []).find(n => n.id === noteInfo.note.id);
+                        if (memNote) memNote.supabaseId = serverRow.id;
+                        await db.notes.put({
+                          ...noteInfo.row,
+                          supabaseId: serverRow.id,
+                          pendingSync: 0,
+                          data: JSON.stringify(noteInfo.note)
+                        });
+                      }
+                    }
+                  } else {
+                    throw new Error("Batch insert response count mismatch");
+                  }
+                } catch (batchErr) {
+                  console.warn(`[flush:${source}] notes batch insert failed, falling back to sequential`, batchErr);
+                  for (const payload of toInsertNotes) {
+                    await processSequentialNote(payload, true);
+                  }
                 }
               }
             } finally {
