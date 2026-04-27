@@ -2486,7 +2486,7 @@
       let db = null
       try {
         db = new Dexie('taskmatrix')
-        // V3 — drop local tombstone store; cross-device deletes
+        // v3 — drop local tombstone store; cross-device deletes
         // are now tracked server-side via `deleted_at` on the Supabase tasks table.
         db.version(1).stores({
           tasks: 'localId, supabaseId, updatedAt, pendingSync',
@@ -2809,13 +2809,13 @@
                 try {
                   const task = JSON.parse(row.data)
 
-                  // Skip rows that were deleted locally (deleted_at set)
+                  // skip rows that were deleted locally (deleted_at set)
                   if (task.deleted_at) {
                     try { await db.tasks.delete(row.localId) } catch (e) { }
                     continue
                   }
 
-                  // If task has a server row, check it hasn't been
+                  // if task has a server row, check it hasn't been
                   // soft-deleted on the server (e.g. deleted from another device offline)
                   if (task.supabaseId && currentUser) {
                     try {
@@ -3084,18 +3084,6 @@
             let allData = [];
 
             if (toUpdate.length > 0) {
-<<<<<<< cleanup-debug-logs-15192091614771872132
-              const { data, error } = await supabaseClient
-                .from('tasks')
-                .upsert(toUpdate, { onConflict: 'id' })
-                .select();
-              if (error) {
-                console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
-                console.error('[DEBUG 4] full error object:', JSON.stringify(error));
-                throw error;
-              }
-              if (data) allData.push(...data);
-=======
               console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
               const upsertPromises = toUpdate.map(t =>
                 supabaseClient
@@ -3114,7 +3102,6 @@
               }
               console.log('[saveTasks] upsert OK — rows returned:', allData.length);
               console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(allData[0]?.notes));
->>>>>>> main
             }
 
             if (toInsert.length > 0) {
@@ -3186,7 +3173,7 @@
             .from('tasks')
             .select('*')
             .eq('user_id', currentUser.id)
-            .is('deleted_at', null)  // Never return soft-deleted tasks
+            .is('deleted_at', null)  // never return soft-deleted tasks
             .order('created_at', { ascending: true });
           if (error) throw error;
 
@@ -4315,7 +4302,7 @@
         const task = tasks.find(t => t.id === id);
         if (!task) return;
         if (confirm('Delete this task?')) {
-          // Soft-delete via Supabase deleted_at (cross-device)
+          // soft-delete via Supabase deleted_at (cross-device)
           let supabaseDeleteSucceeded = false;
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
@@ -5150,7 +5137,7 @@
         if (!currentEditingTask) return;
         if (confirm('Delete this task?')) {
           const task = currentEditingTask;
-          // Soft-delete via Supabase deleted_at (cross-device)
+          // soft-delete via Supabase deleted_at (cross-device)
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
             try {
@@ -5334,7 +5321,7 @@
               } else if (payload.eventType === 'UPDATE') {
               }
 
-              // If the event carries a non-null deleted_at, treat it as a
+              // if the event carries a non-null deleted_at, treat it as a
               // delete — remove from local state and skip any re-render of this task
               if (payload.new && payload.new.deleted_at) {
                 tasks = tasks.filter(t => t.supabaseId !== payload.new.id);
