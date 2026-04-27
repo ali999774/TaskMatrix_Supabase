@@ -5304,21 +5304,17 @@
       }
 
       let _realtimeInitialized = false;
-      function setupRealtime(userId) {
-        if (_realtimeInitialized) {
-          return;
-        }
-        _realtimeInitialized = true;
-        // Track whether each channel has connected at least once so we can
-        // distinguish initial connect (no flush needed) from reconnect (flush first).
-        let _tasksChannelReady = false;
-        let _notesChannelReady = false;
 
-        // BUG FIX 3: Hold channel refs so we can re-subscribe on CLOSED/CHANNEL_ERROR
-        let _tasksRetryTimer = null;
-        let _notesRetryTimer = null;
+      // Realtime state and channels
+      let _tasksChannelReady = false;
+      let _notesChannelReady = false;
+      let _tasksRetryTimer = null;
+      let _notesRetryTimer = null;
+      let _tasksChannel = null;
+      let _notesChannel = null;
 
-        const tasksChannel = supabaseClient
+      function setupTasksRealtime(userId) {
+        _tasksChannel = supabaseClient
           .channel('tasks-changes')
           .on('postgres_changes',
             {
@@ -5368,9 +5364,9 @@
               console.warn('[realtime] tasks channel ' + status + ' — scheduling retry')
               clearTimeout(_tasksRetryTimer);
               _tasksRetryTimer = setTimeout(() => {
-                const state = tasksChannel.state;
+                const state = _tasksChannel.state;
                 if (state !== 'joined' && state !== 'joining') {
-                  tasksChannel.subscribe((retryStatus) => {
+                  _tasksChannel.subscribe((retryStatus) => {
                     if (retryStatus === 'SUBSCRIBED') {
                       _tasksChannelReady = true;
                       setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady);
@@ -5384,8 +5380,10 @@
               }, 2000);
             }
           });
+      }
 
-        const notesChannel = supabaseClient
+      function setupNotesRealtime(userId) {
+        _notesChannel = supabaseClient
           .channel('notes-changes')
           .on('postgres_changes',
             {
@@ -5411,9 +5409,9 @@
               console.warn('[realtime] notes channel ' + status + ' — scheduling retry')
               clearTimeout(_notesRetryTimer);
               _notesRetryTimer = setTimeout(() => {
-                const state = notesChannel.state;
+                const state = _notesChannel.state;
                 if (state !== 'joined' && state !== 'joining') {
-                  notesChannel.subscribe((retryStatus) => {
+                  _notesChannel.subscribe((retryStatus) => {
                     if (retryStatus === 'SUBSCRIBED') {
                       _notesChannelReady = true;
                       setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady);
@@ -5426,7 +5424,9 @@
               }, 2000);
             }
           });
+      }
 
+      function setupRealtimeVisibility() {
         // BUG FIX 3: On tab visibility change (sleep/wake), check channel health
         // and reconnect if the OS dropped the socket while the tab was hidden.
         // BUG 2 FIX: also validate the auth session so a silently-expired token
@@ -5462,16 +5462,31 @@
             // Reconnect Realtime channels if they dropped while tab was hidden.
             // Must unsubscribe first — Supabase Realtime v2 throws if subscribe()
             // is called on an already-joined channel instance.
-            const tasksState = tasksChannel.state;
-            const notesState = notesChannel.state;
-            if (tasksState !== 'joined' && tasksState !== 'joining') {
-              tasksChannel.unsubscribe().then(() => tasksChannel.subscribe());
+            if (_tasksChannel) {
+              const tasksState = _tasksChannel.state;
+              if (tasksState !== 'joined' && tasksState !== 'joining') {
+                _tasksChannel.unsubscribe().then(() => _tasksChannel.subscribe());
+              }
             }
-            if (notesState !== 'joined' && notesState !== 'joining') {
-              notesChannel.unsubscribe().then(() => notesChannel.subscribe());
+            if (_notesChannel) {
+              const notesState = _notesChannel.state;
+              if (notesState !== 'joined' && notesState !== 'joining') {
+                _notesChannel.unsubscribe().then(() => _notesChannel.subscribe());
+              }
             }
           }
         });
+      }
+
+      function setupRealtime(userId) {
+        if (_realtimeInitialized) {
+          return;
+        }
+        _realtimeInitialized = true;
+
+        setupTasksRealtime(userId);
+        setupNotesRealtime(userId);
+        setupRealtimeVisibility();
       }
 
       function renderTags() {
