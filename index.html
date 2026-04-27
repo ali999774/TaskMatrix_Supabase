@@ -3084,18 +3084,6 @@
             let allData = [];
 
             if (toUpdate.length > 0) {
-<<<<<<< cleanup-debug-logs-15192091614771872132
-              const { data, error } = await supabaseClient
-                .from('tasks')
-                .upsert(toUpdate, { onConflict: 'id' })
-                .select();
-              if (error) {
-                console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
-                console.error('[DEBUG 4] full error object:', JSON.stringify(error));
-                throw error;
-              }
-              if (data) allData.push(...data);
-=======
               console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
               const upsertPromises = toUpdate.map(t =>
                 supabaseClient
@@ -3114,7 +3102,6 @@
               }
               console.log('[saveTasks] upsert OK — rows returned:', allData.length);
               console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(allData[0]?.notes));
->>>>>>> main
             }
 
             if (toInsert.length > 0) {
