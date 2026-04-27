@@ -3084,37 +3084,33 @@
             let allData = [];
 
             if (toUpdate.length > 0) {
-<<<<<<< cleanup-debug-logs-15192091614771872132
+              console.log('[saveTasks] batch upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
               const { data, error } = await supabaseClient
                 .from('tasks')
                 .upsert(toUpdate, { onConflict: 'id' })
                 .select();
+
               if (error) {
-                console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
-                console.error('[DEBUG 4] full error object:', JSON.stringify(error));
+                console.error('[saveTasks] batch upsert ERROR:', error.code, error.message, error.details);
+                console.error('[saveTasks] falling back to per-row upserts to isolate failure.');
+                // Fallback loop for per-row error isolation
+                for (const t of toUpdate) {
+                  const { data: rowData, error: rowError } = await supabaseClient
+                    .from('tasks')
+                    .upsert(t, { onConflict: 'id' })
+                    .select();
+                  if (rowError) {
+                    console.error('[saveTasks] per-row upsert ERROR for task:', t.id, rowError?.code, rowError?.message);
+                    continue; // Isolate error, do not abort batch
+                  }
+                  if (rowData) allData.push(...rowData);
+                }
+                // Throw original error to fall through to handleSupabaseError
                 throw error;
               }
+
               if (data) allData.push(...data);
-=======
-              console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
-              const upsertPromises = toUpdate.map(t =>
-                supabaseClient
-                  .from('tasks')
-                  .upsert(t, { onConflict: 'id' })
-                  .select()
-              );
-              const results = await Promise.all(upsertPromises);
-              for (const { data, error } of results) {
-                if (error) {
-                  console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
-                  console.error('[DEBUG 4] full error object:', JSON.stringify(error));
-                  throw error;
-                }
-                if (data) allData.push(...data);
-              }
-              console.log('[saveTasks] upsert OK — rows returned:', allData.length);
-              console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(allData[0]?.notes));
->>>>>>> main
+              console.log('[saveTasks] batch upsert OK — rows returned:', allData.length);
             }
 
             if (toInsert.length > 0) {
