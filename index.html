@@ -3106,9 +3106,10 @@
                   console.error('[DEBUG 4] full error object:', JSON.stringify(error));
                   throw error;
                 }
+              } else {
                 if (data) allData.push(...data);
               }
-              console.log('[saveTasks] upsert OK — rows returned:', allData.length);
+
               console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(allData[0]?.notes));
             }
 
@@ -4011,17 +4012,34 @@
           return;
         }
 
-        grid.innerHTML = filteredNotes.map(note => {
+        grid.innerHTML = '';
+
+        filteredNotes.forEach(note => {
           const preview = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
           const timeAgo = getTimeAgo(note.modifiedAt);
-          return `
-          <div class="note-card ${note.color}" onclick="editNote('${note.id}')">
-            <div class="note-card-header">${escapeHTML(note.title) || 'Untitled'}</div>
-            <div class="note-card-content">${escapeHTML(preview) || 'Empty note'}</div>
-            <div class="note-card-footer">${timeAgo}</div>
-          </div>
-        `;
-        }).join('');
+
+          const card = document.createElement('div');
+          card.className = `note-card ${escapeHTML(note.color) || 'yellow'}`;
+          card.onclick = () => editNote(note.id);
+
+          const header = document.createElement('div');
+          header.className = 'note-card-header';
+          header.textContent = note.title || 'Untitled';
+
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'note-card-content';
+          contentDiv.textContent = preview || 'Empty note';
+
+          const footer = document.createElement('div');
+          footer.className = 'note-card-footer';
+          footer.textContent = timeAgo;
+
+          card.appendChild(header);
+          card.appendChild(contentDiv);
+          card.appendChild(footer);
+
+          grid.appendChild(card);
+        });
       }
       window._tmRenderNotes = renderNotes;
 
@@ -4036,18 +4054,37 @@
         }
 
         container.classList.add('has-notes');
-        grid.innerHTML = pinnedNotes.map(note => {
+        grid.innerHTML = '';
+
+        pinnedNotes.forEach(note => {
           const preview = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
-          return `
-          <div class="note-card ${note.color}" onclick="editNote('${note.id}')">
-            <div class="note-card-header">
-              <span>${escapeHTML(note.title) || 'Untitled'}</span>
-              <span style="font-size: 12px;">📌</span>
-            </div>
-            <div class="note-card-content">${escapeHTML(preview) || 'Empty note'}</div>
-          </div>
-        `;
-        }).join('');
+
+          const card = document.createElement('div');
+          card.className = `note-card ${escapeHTML(note.color) || 'yellow'}`;
+          card.onclick = () => editNote(note.id);
+
+          const header = document.createElement('div');
+          header.className = 'note-card-header';
+
+          const titleSpan = document.createElement('span');
+          titleSpan.textContent = note.title || 'Untitled';
+
+          const pinSpan = document.createElement('span');
+          pinSpan.style.fontSize = '12px';
+          pinSpan.textContent = '📌';
+
+          header.appendChild(titleSpan);
+          header.appendChild(pinSpan);
+
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'note-card-content';
+          contentDiv.textContent = preview || 'Empty note';
+
+          card.appendChild(header);
+          card.appendChild(contentDiv);
+
+          grid.appendChild(card);
+        });
       }
       window._tmRenderPinnedNotes = renderPinnedNotes;
 
