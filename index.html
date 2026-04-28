@@ -3084,37 +3084,29 @@
             let allData = [];
 
             if (toUpdate.length > 0) {
-<<<<<<< cleanup-debug-logs-15192091614771872132
               const { data, error } = await supabaseClient
                 .from('tasks')
                 .upsert(toUpdate, { onConflict: 'id' })
                 .select();
+
               if (error) {
-                console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
-                console.error('[DEBUG 4] full error object:', JSON.stringify(error));
-                throw error;
-              }
-              if (data) allData.push(...data);
-=======
-              console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
-              const upsertPromises = toUpdate.map(t =>
-                supabaseClient
-                  .from('tasks')
-                  .upsert(t, { onConflict: 'id' })
-                  .select()
-              );
-              const results = await Promise.all(upsertPromises);
-              for (const { data, error } of results) {
-                if (error) {
-                  console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
-                  console.error('[DEBUG 4] full error object:', JSON.stringify(error));
-                  throw error;
+                console.warn('[saveTasks] batch upsert failed, falling back to sequential:', error.message);
+                for (const t of toUpdate) {
+                  const { data: singleData, error: singleError } = await supabaseClient
+                    .from('tasks')
+                    .upsert(t, { onConflict: 'id' })
+                    .select();
+
+                  if (singleError) {
+                    console.error('[saveTasks] sequential upsert ERROR for task:', t.id, singleError.message);
+                    // continue with others
+                  } else if (singleData) {
+                    allData.push(...singleData);
+                  }
                 }
-                if (data) allData.push(...data);
+              } else if (data) {
+                allData.push(...data);
               }
-              console.log('[saveTasks] upsert OK — rows returned:', allData.length);
-              console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(allData[0]?.notes));
->>>>>>> main
             }
 
             if (toInsert.length > 0) {
@@ -4383,7 +4375,7 @@
           return;
         }
         container.innerHTML = completedTasks.map(t =>
-          `<div class="task ${t.category}" style="opacity:0.8; cursor:pointer;" onclick="handleTaskInfoClick(event, ${t.id})"><div class="task-content"><button class="icon-btn" onclick="toggleTaskStatus(${t.id})">✓</button><div class="task-info"><div class="task-title completed">${escapeHTML(t.title)}</div></div><button class="icon-btn" onclick="deleteTask(${t.id})">×</button></div></div>`
+          `<div class="task ${escapeHTML(t.category)}" style="opacity:0.8; cursor:pointer;" onclick="handleTaskInfoClick(event, ${t.id})"><div class="task-content"><button class="icon-btn" onclick="toggleTaskStatus(${t.id})">✓</button><div class="task-info"><div class="task-title completed">${escapeHTML(t.title)}</div></div><button class="icon-btn" onclick="deleteTask(${t.id})">×</button></div></div>`
         ).join('');
       }
 
@@ -4736,7 +4728,7 @@
                 </div>`
                 : '';
               const taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
-              return `<div class="task ${task.category} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()" onclick="handleTaskInfoClick(event, ${task.id})" ontouchstart="handleTaskTouchStart(event, ${task.id})" ontouchend="handleTaskTouchEnd(event, ${task.id})">
+              return `<div class="task ${escapeHTML(task.category)} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()" onclick="handleTaskInfoClick(event, ${task.id})" ontouchstart="handleTaskTouchStart(event, ${task.id})" ontouchend="handleTaskTouchEnd(event, ${task.id})">
               <div class="task-content">
                 <button class="icon-btn" onclick="event.stopPropagation(); toggleTaskStatus(${task.id})" style="color:${statusColor}; font-size:20px;">${statusIcon}</button>
                 <div class="task-info">
