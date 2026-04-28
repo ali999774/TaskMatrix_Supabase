@@ -5,6 +5,7 @@
   <script src="src/config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.js"></script>
+  <script src="src/config.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TaskMatrix</title>
@@ -2476,10 +2477,10 @@
       // handled in init() which falls back to Dexie cache instead of crashing.
       let supabaseClient = null;
       try {
-        if (window.supabase) {
+        if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
           supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         } else {
-          console.warn('[Supabase] library not loaded — offline-only mode active');
+          console.warn('[Supabase] library not loaded or credentials missing — offline-only mode active');
         }
       } catch (err) {
         console.warn('[Supabase] createClient failed:', err);
