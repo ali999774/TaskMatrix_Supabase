@@ -4383,7 +4383,7 @@
           return;
         }
         container.innerHTML = completedTasks.map(t =>
-          `<div class="task ${t.category}" style="opacity:0.8; cursor:pointer;" onclick="handleTaskInfoClick(event, ${t.id})"><div class="task-content"><button class="icon-btn" onclick="toggleTaskStatus(${t.id})">✓</button><div class="task-info"><div class="task-title completed">${escapeHTML(t.title)}</div></div><button class="icon-btn" onclick="deleteTask(${t.id})">×</button></div></div>`
+          `<div class="task ${escapeHTML(t.category)}" style="opacity:0.8; cursor:pointer;" onclick="handleTaskInfoClick(event, ${t.id})"><div class="task-content"><button class="icon-btn" onclick="toggleTaskStatus(${t.id})">✓</button><div class="task-info"><div class="task-title completed">${escapeHTML(t.title)}</div></div><button class="icon-btn" onclick="deleteTask(${t.id})">×</button></div></div>`
         ).join('');
       }
 
@@ -4736,7 +4736,7 @@
                 </div>`
                 : '';
               const taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
-              return `<div class="task ${task.category} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()" onclick="handleTaskInfoClick(event, ${task.id})" ontouchstart="handleTaskTouchStart(event, ${task.id})" ontouchend="handleTaskTouchEnd(event, ${task.id})">
+              return `<div class="task ${escapeHTML(task.category)} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()" onclick="handleTaskInfoClick(event, ${task.id})" ontouchstart="handleTaskTouchStart(event, ${task.id})" ontouchend="handleTaskTouchEnd(event, ${task.id})">
               <div class="task-content">
                 <button class="icon-btn" onclick="event.stopPropagation(); toggleTaskStatus(${task.id})" style="color:${statusColor}; font-size:20px;">${statusIcon}</button>
                 <div class="task-info">
