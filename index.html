@@ -2540,6 +2540,9 @@
       const SAVE_RETRY_DELAYS = [15000, 30000, 60000];
       // FIX 4: track deleted note supabaseIds so we don't nuke the whole table
       let pendingNoteDeletes = [];
+      // DEDUP FIX: guard against onAuthStateChange SIGNED_IN double-firing after
+      // getSession() already completed the initial load on the same page lifecycle.
+      let _initialLoadDone = false;
 
       // ── Pulse animation for sync dot ─────────────────────────────
       const _pulseStyle = document.createElement('style');
@@ -3114,14 +3117,25 @@
             }
 
             if (allData.length > 0) {
+              // First pass: match rows that already have a supabaseId (upserts)
               allData.forEach(row => {
-                const task = tasks.find(t => t.supabaseId === row.id ||
-                  (!t.supabaseId && t.title === row.title));
-                if (task) {
-                  if (!task.supabaseId) {
-                    console.log('[TaskMatrix] saveTasks → insert success, supabaseId assigned', { localId: task.id, supabaseId: row.id });
-                  }
-                  task.supabaseId = row.id;
+                const task = tasks.find(t => t.supabaseId === row.id);
+                if (task) task.supabaseId = row.id; // confirm (no-op but explicit)
+              });
+              // Second pass: match newly-INSERTed rows by array position.
+              // Supabase returns rows in the same order as the input array, so
+              // toInsert[i] corresponds to allData rows NOT already matched above.
+              // Using positional matching instead of title avoids creating duplicate
+              // supabaseId assignments when two tasks share the same title.
+              const insertedRows = allData.filter(row => !tasks.find(t => t.supabaseId === row.id));
+              toInsert.forEach((localTask, i) => {
+                const row = insertedRows[i];
+                if (!row) return;
+                const memTask = tasks.find(t => t.id === localTask.id);
+                if (memTask && !memTask.supabaseId) {
+                  memTask.supabaseId = row.id;
+                  localTask.supabaseId = row.id;
+                  console.log('[TaskMatrix] saveTasks → INSERT supabaseId assigned by position', { localId: localTask.id, title: row.title, supabaseId: row.id });
                 }
               });
             }
@@ -3210,7 +3224,28 @@
               addedCount++;
             }
           });
-          console.log('[TaskMatrix] loadTasksFromSupabase → merge result', { kept: keptCount, added: addedCount, removed: removedCount });
+
+          // DEDUP FIX: collapse tasks[] entries that share the same supabaseId.
+          // This can happen when loadTasksFromSupabase() is called concurrently
+          // (e.g. flushPendingSync → loadTasksFromSupabase, then Realtime echo
+          // triggers another loadTasksFromSupabase before the first finishes).
+          const _seenIds = new Set();
+          const beforeDedup = tasks.length;
+          tasks = tasks.filter(t => {
+            if (!t.supabaseId) return true; // keep local-only (not yet synced) tasks
+            if (_seenIds.has(t.supabaseId)) {
+              console.warn('[loadTasks] dedup: removing in-memory duplicate supabaseId', t.supabaseId);
+              return false;
+            }
+            _seenIds.add(t.supabaseId);
+            return true;
+          });
+          const dedupRemoved = beforeDedup - tasks.length;
+          if (dedupRemoved > 0) {
+            console.warn('[loadTasks] dedup removed', dedupRemoved, 'in-memory duplicate(s)');
+          }
+
+          console.log('[TaskMatrix] loadTasksFromSupabase → merge result', { kept: keptCount, added: addedCount, removed: removedCount, dedupRemoved });
 
           // Fix 4: Update Dexie cache with fresh data
           try {
@@ -3546,6 +3581,7 @@
             await flushPendingSync(); // flush pending Dexie changes before server overwrites local cache
             await loadTasksFromSupabase();
             await loadNotesFromSupabase();
+            _initialLoadDone = true; // DEDUP FIX: mark initial load complete
             render();
             renderNotes();
             renderPinnedNotes();
@@ -3605,11 +3641,18 @@
           if (event === 'SIGNED_IN' && session) {
             currentUser = session.user;
             hideAuthScreen();
+            // DEDUP FIX: if getSession() already ran the full init sequence above
+            // (OAuth redirect case), skip redundant reload to prevent double-INSERT.
+            if (_initialLoadDone) {
+              console.log('[auth] SIGNED_IN fired after initial load — skipping duplicate load');
+              return;
+            }
             const savedStats = localStorage.getItem('userStats');
             if (savedStats) userStats = JSON.parse(savedStats);
             await checkAndMigrateLocalStorage();
             await loadTasksFromSupabase();
             await loadNotesFromSupabase();
+            _initialLoadDone = true;
             render();
             renderNotes();
             renderPinnedNotes();
