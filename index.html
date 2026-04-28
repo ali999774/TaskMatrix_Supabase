@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+  <script src="src/config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.js"></script>
   <meta charset="UTF-8">
@@ -2464,9 +2465,13 @@
 
     <script>
       // ── Supabase Config ──────────────────────────────────────────
-      // TODO: Replace with your actual Supabase project credentials
-      const SUPABASE_URL = 'https://xulnxwwwjpvgsaqnsllo.supabase.co'
-      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1bG54d3d3anB2Z3NhcW5zbGxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMTQwMzYsImV4cCI6MjA4OTc5MDAzNn0.lWoihSm-kv_Ep5fXQZ55H4YU5wXmmKvK4LVLSBIVYic'
+      const SUPABASE_URL = 'https://xulnxwwwjpvgsaqnsllo.supabase.co';
+      const SUPABASE_ANON_KEY = 'sb_publishable_PHuC0kENMdy-Qdfd3iAKnQ_AKpnpwo4';
+
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        console.error('[Supabase] Missing credentials! Please ensure src/config.js defines window.SUPABASE_URL and window.SUPABASE_ANON_KEY.');
+      }
+
       // Guard against CDN load failure (offline first visit) — null client is
       // handled in init() which falls back to Dexie cache instead of crashing.
       let supabaseClient = null;
@@ -2486,7 +2491,7 @@
       let db = null
       try {
         db = new Dexie('taskmatrix')
-        // GHOST-TASK FIX: v3 — drop local tombstone store; cross-device deletes
+        // v3 — drop local tombstone store; cross-device deletes
         // are now tracked server-side via `deleted_at` on the Supabase tasks table.
         db.version(1).stores({
           tasks: 'localId, supabaseId, updatedAt, pendingSync',
@@ -2540,6 +2545,9 @@
       const SAVE_RETRY_DELAYS = [15000, 30000, 60000];
       // FIX 4: track deleted note supabaseIds so we don't nuke the whole table
       let pendingNoteDeletes = [];
+      // DEDUP FIX: guard against onAuthStateChange SIGNED_IN double-firing after
+      // getSession() already completed the initial load on the same page lifecycle.
+      let _initialLoadDone = false;
 
       // ── Pulse animation for sync dot ─────────────────────────────
       const _pulseStyle = document.createElement('style');
@@ -2809,13 +2817,13 @@
                 try {
                   const task = JSON.parse(row.data)
 
-                  // GHOST-TASK FIX: skip rows that were deleted locally (deleted_at set)
+                  // skip rows that were deleted locally (deleted_at set)
                   if (task.deleted_at) {
                     try { await db.tasks.delete(row.localId) } catch (e) { }
                     continue
                   }
 
-                  // GHOST-TASK FIX: if task has a server row, check it hasn't been
+                  // if task has a server row, check it hasn't been
                   // soft-deleted on the server (e.g. deleted from another device offline)
                   if (task.supabaseId && currentUser) {
                     try {
@@ -2899,22 +2907,22 @@
               }
 
               // ── Notes flush ─────────────────────────────────────────
-              // Push each pending note individually so a Supabase error on one
-              // note leaves it in the retry queue rather than losing it.
-              const pendingNotes = await db.notes.where('pendingSync').equals(1).toArray()
+              const pendingNotes = await db.notes.where('pendingSync').equals(1).toArray();
+              const toUpdateNotes = [];
+              const toInsertNotes = [];
+              const noteRowsMap = new Map();
 
               for (const noteRow of pendingNotes) {
                 try {
-                  const note = JSON.parse(noteRow.data)
-                  let noteError = null
-
+                  const note = JSON.parse(noteRow.data);
+                  noteRowsMap.set(note.id, { row: noteRow, note });
                   if (note.supabaseId) {
                     const { error } = await supabaseClient
                       .from('sticky_notes')
                       .upsert({
                         id: note.supabaseId,
                         user_id: currentUser.id,
-                        title: note.title || '',  // TITLE FIX: also apply to offline-flush path
+                        title: note.title || '',
                         content: note.content || '',
                         color: note.color || 'yellow',
                         position_x: note.x || 0,
@@ -2924,41 +2932,109 @@
                       }, { onConflict: 'id' })
                     noteError = error
                   } else {
-                    const { data, error } = await supabaseClient
-                      .from('sticky_notes')
-                      .insert({
-                        user_id: currentUser.id,
-                        content: note.content || '',
-                        color: note.color || 'yellow',
-                        position_x: note.x || 0,
-                        position_y: note.y || 0,
-                        pinned: note.pinned || false,
-                        created_at: note.createdAt || new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                      })
-                      .select()
-                    noteError = error
-                    if (!error && data?.[0]?.id) {
-                      note.supabaseId = data[0].id
-                      const memNote = (typeof notes !== 'undefined' ? notes : []).find(n => n.id === note.id)
-                      if (memNote) memNote.supabaseId = data[0].id
+                    toInsertNotes.push({
+                      user_id: currentUser.id,
+                      title: note.title || '',
+                      content: note.content || '',
+                      color: note.color || 'yellow',
+                      position_x: note.x || 0,
+                      position_y: note.y || 0,
+                      pinned: note.pinned || false,
+                      created_at: note.createdAt || new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                      _localId: note.id // temporary field for mapping back
+                    });
+                  }
+                } catch (e) {
+                  console.error(`[flush:${source}] failed to parse note row`, e);
+                }
+              }
+
+              async function processSequentialNote(payload, isInsert) {
+                const localId = payload._localId;
+                if (isInsert) delete payload._localId;
+
+                const query = isInsert
+                  ? supabaseClient.from('sticky_notes').insert(payload).select()
+                  : supabaseClient.from('sticky_notes').upsert(payload, { onConflict: 'id' });
+
+                const { data, error } = await query;
+                const noteInfo = noteRowsMap.get(localId) || Array.from(noteRowsMap.values()).find(info => info.note.supabaseId === payload.id);
+                if (!noteInfo) return;
+
+                if (error) {
+                  console.error(`[flush:${source}] note FAILED (queued for retry): id=${noteInfo.note.id}`, error);
+                } else {
+                  if (isInsert && data?.[0]?.id) {
+                    noteInfo.note.supabaseId = data[0].id;
+                    const memNote = (typeof notes !== 'undefined' ? notes : []).find(n => n.id === noteInfo.note.id);
+                    if (memNote) memNote.supabaseId = data[0].id;
+                  }
+                  await db.notes.put({
+                    ...noteInfo.row,
+                    supabaseId: noteInfo.note.supabaseId || null,
+                    pendingSync: 0,
+                    data: JSON.stringify(noteInfo.note)
+                  });
+                }
+              }
+
+              if (toUpdateNotes.length > 0) {
+                try {
+                  const { error } = await supabaseClient.from('sticky_notes').upsert(toUpdateNotes, { onConflict: 'id' });
+                  if (error) throw error;
+                  for (const payload of toUpdateNotes) {
+                    const noteInfo = Array.from(noteRowsMap.values()).find(info => info.note.supabaseId === payload.id);
+                    if (noteInfo) {
+                      await db.notes.put({
+                        ...noteInfo.row,
+                        supabaseId: noteInfo.note.supabaseId || null,
+                        pendingSync: 0,
+                        data: JSON.stringify(noteInfo.note)
+                      });
                     }
                   }
-
-                  if (noteError) {
-                    // noteRow keeps pendingSync:1 — will retry on next flush
-                    console.error(`[flush:${source}] note FAILED (queued for retry): id=${note.id}`, noteError)
-                  } else {
-                    await db.notes.put({
-                      ...noteRow,
-                      supabaseId: note.supabaseId || null,
-                      pendingSync: 0,
-                      data: JSON.stringify(note)
-                    })
+                } catch (batchErr) {
+                  console.warn(`[flush:${source}] notes batch update failed, falling back to sequential`, batchErr);
+                  for (const payload of toUpdateNotes) {
+                    await processSequentialNote(payload, false);
                   }
-                } catch (noteRowErr) {
-                  // noteRow keeps pendingSync:1 — will retry on next flush
-                  console.error(`[flush:${source}] note row error (queued for retry):`, noteRowErr)
+                }
+              }
+
+              if (toInsertNotes.length > 0) {
+                try {
+                  const insertPayloads = toInsertNotes.map(n => { const { _localId, ...rest } = n; return rest; });
+                  const { data, error } = await supabaseClient.from('sticky_notes').insert(insertPayloads).select();
+                  if (error) throw error;
+
+                  // Map responses back. Since order might not be strictly guaranteed without matching a unique key,
+                  // we use title + content as fallback if _localId is stripped, but we can also match by order if length matches.
+                  if (data && data.length === toInsertNotes.length) {
+                    for (let i = 0; i < data.length; i++) {
+                      const serverRow = data[i];
+                      const localId = toInsertNotes[i]._localId;
+                      const noteInfo = noteRowsMap.get(localId);
+                      if (noteInfo) {
+                        noteInfo.note.supabaseId = serverRow.id;
+                        const memNote = (typeof notes !== 'undefined' ? notes : []).find(n => n.id === noteInfo.note.id);
+                        if (memNote) memNote.supabaseId = serverRow.id;
+                        await db.notes.put({
+                          ...noteInfo.row,
+                          supabaseId: serverRow.id,
+                          pendingSync: 0,
+                          data: JSON.stringify(noteInfo.note)
+                        });
+                      }
+                    }
+                  } else {
+                    throw new Error("Batch insert response count mismatch");
+                  }
+                } catch (batchErr) {
+                  console.warn(`[flush:${source}] notes batch insert failed, falling back to sequential`, batchErr);
+                  for (const payload of toInsertNotes) {
+                    await processSequentialNote(payload, true);
+                  }
                 }
               }
             } finally {
@@ -3084,18 +3160,6 @@
             let allData = [];
 
             if (toUpdate.length > 0) {
-<<<<<<< cleanup-debug-logs-15192091614771872132
-              const { data, error } = await supabaseClient
-                .from('tasks')
-                .upsert(toUpdate, { onConflict: 'id' })
-                .select();
-              if (error) {
-                console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
-                console.error('[DEBUG 4] full error object:', JSON.stringify(error));
-                throw error;
-              }
-              if (data) allData.push(...data);
-=======
               console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
               const upsertPromises = toUpdate.map(t =>
                 supabaseClient
@@ -3110,11 +3174,11 @@
                   console.error('[DEBUG 4] full error object:', JSON.stringify(error));
                   throw error;
                 }
+              } else {
                 if (data) allData.push(...data);
               }
-              console.log('[saveTasks] upsert OK — rows returned:', allData.length);
+
               console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(allData[0]?.notes));
->>>>>>> main
             }
 
             if (toInsert.length > 0) {
@@ -3127,13 +3191,25 @@
             }
 
             if (allData.length > 0) {
+              // First pass: match rows that already have a supabaseId (upserts)
               allData.forEach(row => {
-                const task = tasks.find(t => t.supabaseId === row.id ||
-                  (!t.supabaseId && t.title === row.title));
-                if (task) {
-                  if (!task.supabaseId) {
-                  }
-                  task.supabaseId = row.id;
+                const task = tasks.find(t => t.supabaseId === row.id);
+                if (task) task.supabaseId = row.id; // confirm (no-op but explicit)
+              });
+              // Second pass: match newly-INSERTed rows by array position.
+              // Supabase returns rows in the same order as the input array, so
+              // toInsert[i] corresponds to allData rows NOT already matched above.
+              // Using positional matching instead of title avoids creating duplicate
+              // supabaseId assignments when two tasks share the same title.
+              const insertedRows = allData.filter(row => !tasks.find(t => t.supabaseId === row.id));
+              toInsert.forEach((localTask, i) => {
+                const row = insertedRows[i];
+                if (!row) return;
+                const memTask = tasks.find(t => t.id === localTask.id);
+                if (memTask && !memTask.supabaseId) {
+                  memTask.supabaseId = row.id;
+                  localTask.supabaseId = row.id;
+                  console.log('[TaskMatrix] saveTasks → INSERT supabaseId assigned by position', { localId: localTask.id, title: row.title, supabaseId: row.id });
                 }
               });
             }
@@ -3186,7 +3262,7 @@
             .from('tasks')
             .select('*')
             .eq('user_id', currentUser.id)
-            .is('deleted_at', null)  // GHOST-TASK FIX: never return soft-deleted tasks
+            .is('deleted_at', null)  // never return soft-deleted tasks
             .order('created_at', { ascending: true });
           if (error) throw error;
 
@@ -3217,6 +3293,28 @@
               addedCount++;
             }
           });
+
+          // DEDUP FIX: collapse tasks[] entries that share the same supabaseId.
+          // This can happen when loadTasksFromSupabase() is called concurrently
+          // (e.g. flushPendingSync → loadTasksFromSupabase, then Realtime echo
+          // triggers another loadTasksFromSupabase before the first finishes).
+          const _seenIds = new Set();
+          const beforeDedup = tasks.length;
+          tasks = tasks.filter(t => {
+            if (!t.supabaseId) return true; // keep local-only (not yet synced) tasks
+            if (_seenIds.has(t.supabaseId)) {
+              console.warn('[loadTasks] dedup: removing in-memory duplicate supabaseId', t.supabaseId);
+              return false;
+            }
+            _seenIds.add(t.supabaseId);
+            return true;
+          });
+          const dedupRemoved = beforeDedup - tasks.length;
+          if (dedupRemoved > 0) {
+            console.warn('[loadTasks] dedup removed', dedupRemoved, 'in-memory duplicate(s)');
+          }
+
+          console.log('[TaskMatrix] loadTasksFromSupabase → merge result', { kept: keptCount, added: addedCount, removed: removedCount, dedupRemoved });
 
           // Fix 4: Update Dexie cache with fresh data
           try {
@@ -3302,7 +3400,7 @@
                   .upsert({
                     id: n.supabaseId,
                     user_id: currentUser.id,
-                    title: n.title || '',  // TITLE FIX: was missing — caused title to revert after save
+                    title: n.title || '',
                     content: n.content || '',
                     color: n.color || 'yellow',
                     position_x: n.x || 0,
@@ -3557,6 +3655,7 @@
             await flushPendingSync(); // flush pending Dexie changes before server overwrites local cache
             await loadTasksFromSupabase();
             await loadNotesFromSupabase();
+            _initialLoadDone = true; // DEDUP FIX: mark initial load complete
             render();
             renderNotes();
             renderPinnedNotes();
@@ -3613,11 +3712,18 @@
           if (event === 'SIGNED_IN' && session) {
             currentUser = session.user;
             hideAuthScreen();
+            // DEDUP FIX: if getSession() already ran the full init sequence above
+            // (OAuth redirect case), skip redundant reload to prevent double-INSERT.
+            if (_initialLoadDone) {
+              console.log('[auth] SIGNED_IN fired after initial load — skipping duplicate load');
+              return;
+            }
             const savedStats = localStorage.getItem('userStats');
             if (savedStats) userStats = JSON.parse(savedStats);
             await checkAndMigrateLocalStorage();
             await loadTasksFromSupabase();
             await loadNotesFromSupabase();
+            _initialLoadDone = true;
             render();
             renderNotes();
             renderPinnedNotes();
@@ -3659,7 +3765,7 @@
         }, 4000)
       }
 
-      // SCHEDULE-TASK FIX: make async so we can await the handleQuickAdd INSERT
+      // Note: This is async so we can await the handleQuickAdd INSERT
       // before saving the quadrant change. Without the await, quickAddMoveTo runs
       // while the first saveTasks() INSERT is still in-flight (task has no
       // supabaseId yet), causing a second INSERT → two server rows → task reverts
@@ -3974,17 +4080,34 @@
           return;
         }
 
-        grid.innerHTML = filteredNotes.map(note => {
+        grid.innerHTML = '';
+
+        filteredNotes.forEach(note => {
           const preview = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
           const timeAgo = getTimeAgo(note.modifiedAt);
-          return `
-          <div class="note-card ${escapeHTML(note.color)}" onclick="editNote('${escapeHTML(String(note.id))}')">
-            <div class="note-card-header">${escapeHTML(note.title) || 'Untitled'}</div>
-            <div class="note-card-content">${escapeHTML(preview) || 'Empty note'}</div>
-            <div class="note-card-footer">${timeAgo}</div>
-          </div>
-        `;
-        }).join('');
+
+          const card = document.createElement('div');
+          card.className = `note-card ${escapeHTML(note.color) || 'yellow'}`;
+          card.onclick = () => editNote(note.id);
+
+          const header = document.createElement('div');
+          header.className = 'note-card-header';
+          header.textContent = note.title || 'Untitled';
+
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'note-card-content';
+          contentDiv.textContent = preview || 'Empty note';
+
+          const footer = document.createElement('div');
+          footer.className = 'note-card-footer';
+          footer.textContent = timeAgo;
+
+          card.appendChild(header);
+          card.appendChild(contentDiv);
+          card.appendChild(footer);
+
+          grid.appendChild(card);
+        });
       }
       window._tmRenderNotes = renderNotes;
 
@@ -3999,18 +4122,37 @@
         }
 
         container.classList.add('has-notes');
-        grid.innerHTML = pinnedNotes.map(note => {
+        grid.innerHTML = '';
+
+        pinnedNotes.forEach(note => {
           const preview = note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content;
-          return `
-          <div class="note-card ${escapeHTML(note.color)}" onclick="editNote('${escapeHTML(String(note.id))}')">
-            <div class="note-card-header">
-              <span>${escapeHTML(note.title) || 'Untitled'}</span>
-              <span style="font-size: 12px;">📌</span>
-            </div>
-            <div class="note-card-content">${escapeHTML(preview) || 'Empty note'}</div>
-          </div>
-        `;
-        }).join('');
+
+          const card = document.createElement('div');
+          card.className = `note-card ${escapeHTML(note.color) || 'yellow'}`;
+          card.onclick = () => editNote(note.id);
+
+          const header = document.createElement('div');
+          header.className = 'note-card-header';
+
+          const titleSpan = document.createElement('span');
+          titleSpan.textContent = note.title || 'Untitled';
+
+          const pinSpan = document.createElement('span');
+          pinSpan.style.fontSize = '12px';
+          pinSpan.textContent = '📌';
+
+          header.appendChild(titleSpan);
+          header.appendChild(pinSpan);
+
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'note-card-content';
+          contentDiv.textContent = preview || 'Empty note';
+
+          card.appendChild(header);
+          card.appendChild(contentDiv);
+
+          grid.appendChild(card);
+        });
       }
       window._tmRenderPinnedNotes = renderPinnedNotes;
 
@@ -4315,7 +4457,7 @@
         const task = tasks.find(t => t.id === id);
         if (!task) return;
         if (confirm('Delete this task?')) {
-          // GHOST-TASK FIX: soft-delete via Supabase deleted_at (cross-device)
+          // soft-delete via Supabase deleted_at (cross-device)
           let supabaseDeleteSucceeded = false;
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
@@ -4383,7 +4525,7 @@
           return;
         }
         container.innerHTML = completedTasks.map(t =>
-          `<div class="task ${t.category}" style="opacity:0.8; cursor:pointer;" onclick="handleTaskInfoClick(event, ${t.id})"><div class="task-content"><button class="icon-btn" onclick="toggleTaskStatus(${t.id})">✓</button><div class="task-info"><div class="task-title completed">${escapeHTML(t.title)}</div></div><button class="icon-btn" onclick="deleteTask(${t.id})">×</button></div></div>`
+          `<div class="task ${escapeHTML(t.category)}" style="opacity:0.8; cursor:pointer;" onclick="handleTaskInfoClick(event, ${t.id})"><div class="task-content"><button class="icon-btn" onclick="toggleTaskStatus(${t.id})">✓</button><div class="task-info"><div class="task-title completed">${escapeHTML(t.title)}</div></div><button class="icon-btn" onclick="deleteTask(${t.id})">×</button></div></div>`
         ).join('');
       }
 
@@ -4736,7 +4878,7 @@
                 </div>`
                 : '';
               const taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
-              return `<div class="task ${task.category} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()" onclick="handleTaskInfoClick(event, ${task.id})" ontouchstart="handleTaskTouchStart(event, ${task.id})" ontouchend="handleTaskTouchEnd(event, ${task.id})">
+              return `<div class="task ${escapeHTML(task.category)} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()" onclick="handleTaskInfoClick(event, ${task.id})" ontouchstart="handleTaskTouchStart(event, ${task.id})" ontouchend="handleTaskTouchEnd(event, ${task.id})">
               <div class="task-content">
                 <button class="icon-btn" onclick="event.stopPropagation(); toggleTaskStatus(${task.id})" style="color:${statusColor}; font-size:20px;">${statusIcon}</button>
                 <div class="task-info">
@@ -5150,7 +5292,7 @@
         if (!currentEditingTask) return;
         if (confirm('Delete this task?')) {
           const task = currentEditingTask;
-          // GHOST-TASK FIX: soft-delete via Supabase deleted_at (cross-device)
+          // soft-delete via Supabase deleted_at (cross-device)
           if (task.supabaseId && currentUser) {
             setSyncState('syncing')
             try {
@@ -5304,21 +5446,17 @@
       }
 
       let _realtimeInitialized = false;
-      function setupRealtime(userId) {
-        if (_realtimeInitialized) {
-          return;
-        }
-        _realtimeInitialized = true;
-        // Track whether each channel has connected at least once so we can
-        // distinguish initial connect (no flush needed) from reconnect (flush first).
-        let _tasksChannelReady = false;
-        let _notesChannelReady = false;
 
-        // BUG FIX 3: Hold channel refs so we can re-subscribe on CLOSED/CHANNEL_ERROR
-        let _tasksRetryTimer = null;
-        let _notesRetryTimer = null;
+      // Realtime state and channels
+      let _tasksChannelReady = false;
+      let _notesChannelReady = false;
+      let _tasksRetryTimer = null;
+      let _notesRetryTimer = null;
+      let _tasksChannel = null;
+      let _notesChannel = null;
 
-        const tasksChannel = supabaseClient
+      function setupTasksRealtime(userId) {
+        _tasksChannel = supabaseClient
           .channel('tasks-changes')
           .on('postgres_changes',
             {
@@ -5334,7 +5472,7 @@
               } else if (payload.eventType === 'UPDATE') {
               }
 
-              // GHOST-TASK FIX: if the event carries a non-null deleted_at, treat it as a
+              // if the event carries a non-null deleted_at, treat it as a
               // delete — remove from local state and skip any re-render of this task
               if (payload.new && payload.new.deleted_at) {
                 tasks = tasks.filter(t => t.supabaseId !== payload.new.id);
@@ -5368,9 +5506,9 @@
               console.warn('[realtime] tasks channel ' + status + ' — scheduling retry')
               clearTimeout(_tasksRetryTimer);
               _tasksRetryTimer = setTimeout(() => {
-                const state = tasksChannel.state;
+                const state = _tasksChannel.state;
                 if (state !== 'joined' && state !== 'joining') {
-                  tasksChannel.subscribe((retryStatus) => {
+                  _tasksChannel.subscribe((retryStatus) => {
                     if (retryStatus === 'SUBSCRIBED') {
                       _tasksChannelReady = true;
                       setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady);
@@ -5384,8 +5522,10 @@
               }, 2000);
             }
           });
+      }
 
-        const notesChannel = supabaseClient
+      function setupNotesRealtime(userId) {
+        _notesChannel = supabaseClient
           .channel('notes-changes')
           .on('postgres_changes',
             {
@@ -5411,9 +5551,9 @@
               console.warn('[realtime] notes channel ' + status + ' — scheduling retry')
               clearTimeout(_notesRetryTimer);
               _notesRetryTimer = setTimeout(() => {
-                const state = notesChannel.state;
+                const state = _notesChannel.state;
                 if (state !== 'joined' && state !== 'joining') {
-                  notesChannel.subscribe((retryStatus) => {
+                  _notesChannel.subscribe((retryStatus) => {
                     if (retryStatus === 'SUBSCRIBED') {
                       _notesChannelReady = true;
                       setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady);
@@ -5426,7 +5566,9 @@
               }, 2000);
             }
           });
+      }
 
+      function setupRealtimeVisibility() {
         // BUG FIX 3: On tab visibility change (sleep/wake), check channel health
         // and reconnect if the OS dropped the socket while the tab was hidden.
         // BUG 2 FIX: also validate the auth session so a silently-expired token
@@ -5462,16 +5604,31 @@
             // Reconnect Realtime channels if they dropped while tab was hidden.
             // Must unsubscribe first — Supabase Realtime v2 throws if subscribe()
             // is called on an already-joined channel instance.
-            const tasksState = tasksChannel.state;
-            const notesState = notesChannel.state;
-            if (tasksState !== 'joined' && tasksState !== 'joining') {
-              tasksChannel.unsubscribe().then(() => tasksChannel.subscribe());
+            if (_tasksChannel) {
+              const tasksState = _tasksChannel.state;
+              if (tasksState !== 'joined' && tasksState !== 'joining') {
+                _tasksChannel.unsubscribe().then(() => _tasksChannel.subscribe());
+              }
             }
-            if (notesState !== 'joined' && notesState !== 'joining') {
-              notesChannel.unsubscribe().then(() => notesChannel.subscribe());
+            if (_notesChannel) {
+              const notesState = _notesChannel.state;
+              if (notesState !== 'joined' && notesState !== 'joining') {
+                _notesChannel.unsubscribe().then(() => _notesChannel.subscribe());
+              }
             }
           }
         });
+      }
+
+      function setupRealtime(userId) {
+        if (_realtimeInitialized) {
+          return;
+        }
+        _realtimeInitialized = true;
+
+        setupTasksRealtime(userId);
+        setupNotesRealtime(userId);
+        setupRealtimeVisibility();
       }
 
       function renderTags() {
@@ -5753,7 +5910,6 @@
         Sign in with Google
       </button>
     </div>
-    <script src="src/config.js"></script>
     <script src="src/voiceTask.js"></script>
 
 </body>
