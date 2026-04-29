@@ -2481,6 +2481,10 @@
         console.error('[Supabase] Missing credentials! Please ensure src/config.js defines window.SUPABASE_URL and window.SUPABASE_ANON_KEY.');
       }
 
+      if (!window.XAI_API_KEY) {
+        console.warn('src/config.js missing or incomplete — copy src/config.js.example and fill in your keys');
+      }
+
       // Guard against CDN load failure (offline first visit) — null client is
       // handled in init() which falls back to Dexie cache instead of crashing.
       let supabaseClient = null;
