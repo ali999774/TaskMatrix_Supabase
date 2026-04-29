@@ -3630,6 +3630,17 @@
         document.documentElement.setAttribute('data-theme', savedTheme);
         updateThemeIcon(savedTheme);
 
+        if (new URLSearchParams(window.location.search).has('test')) {
+          tasks = [
+            { id: 1, title: 'Task Alpha', importance: 5, urgency: 5, status: 'pending', category: 'work', subtasks: [], tags: [], notes: '' },
+            { id: 2, title: 'Task Beta', importance: 5, urgency: 5, status: 'pending', category: 'work', subtasks: [], tags: [], notes: '' },
+            { id: 3, title: 'Task Gamma', importance: 5, urgency: 2, status: 'pending', category: 'work', subtasks: [], tags: [], notes: '' }
+          ];
+          hideAuthScreen();
+          render();
+          return;
+        }
+
         // Default sync dot to synced (green)
         setSyncState('synced');
         // Hide app until auth is confirmed
@@ -5024,6 +5035,8 @@
             dragClass: 'sortable-drag',
             delay: 200,
             delayOnTouchOnly: true,
+            forceFallback: true,
+            fallbackClass: 'sortable-drag',
             onEnd: handleSortableEnd
           });
           sortableInstances.push(instance);
