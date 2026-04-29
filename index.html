@@ -6,6 +6,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.js"></script>
   <script src="src/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TaskMatrix</title>
@@ -13,6 +14,7 @@
   <meta name="theme-color" content="#6366f1">
   <link rel="icon"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+  <link rel="manifest" href="manifest.json">
   <style>
     :root {
       /* Base Colors */
@@ -618,6 +620,15 @@
       opacity: 0.8;
       transform: scale(1.01);
       transition: all 0.15s;
+    }
+
+    .sortable-ghost {
+      opacity: 0.4;
+      background-color: #f3f4f6;
+    }
+
+    .sortable-drag {
+      cursor: grabbing !important;
     }
 
     /* Archived section */
@@ -2122,8 +2133,7 @@
         <!-- Matrix -->
         <div class="card">
       <div class="matrix">
-        <div class="quadrant red" ondragover="allowDrop(event)" ondrop="drop(event, 'do-first')"
-          ondragenter="this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
+        <div class="quadrant red">
           <div class="quad-header red">
             <span>Do First 🔥</span>
             <div style="display:flex; align-items:center; gap:8px;">
@@ -2144,8 +2154,7 @@
           <div class="quad-body" id="tasks-do-first"></div>
         </div>
 
-        <div class="quadrant blue" ondragover="allowDrop(event)" ondrop="drop(event, 'schedule')"
-          ondragenter="this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
+        <div class="quadrant blue">
           <div class="quad-header blue">
             <span>Schedule 📅</span>
             <div style="display:flex; align-items:center; gap:8px;">
@@ -2166,8 +2175,7 @@
           <div class="quad-body" id="tasks-schedule"></div>
         </div>
 
-        <div class="quadrant yellow" ondragover="allowDrop(event)" ondrop="drop(event, 'delegate')"
-          ondragenter="this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
+        <div class="quadrant yellow">
           <div class="quad-header yellow">
             <span>Delegate 🤝</span>
             <div style="display:flex; align-items:center; gap:8px;">
@@ -2188,8 +2196,7 @@
           <div class="quad-body" id="tasks-delegate"></div>
         </div>
 
-        <div class="quadrant gray" ondragover="allowDrop(event)" ondrop="drop(event, 'eliminate')"
-          ondragenter="this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
+        <div class="quadrant gray">
           <div class="quad-header gray">
             <span>Eliminate 🗑️</span>
             <div style="display:flex; align-items:center; gap:8px;">
@@ -3087,7 +3094,8 @@
           pinned: row.pinned,
           createdAt: row.created_at,
           modifiedAt: row.updated_at,
-          deleted_at: row.deleted_at || null
+          deleted_at: row.deleted_at || null,
+          position: row.position || 0
         }
       }
 
@@ -3135,7 +3143,8 @@
               recur_days: t.recurDays || [],
               tags: t.tags || [],
               subtasks: t.subtasks || [],
-              pinned: t.pinned || false
+              pinned: t.pinned || false,
+              position: t.position || 0
             }));
 
             const toUpdate = tasks.filter(t => t.supabaseId).map(t => ({
@@ -3157,6 +3166,7 @@
               tags: t.tags || [],
               subtasks: t.subtasks || [],
               pinned: t.pinned || false,
+              position: t.position || 0,
               updated_at: new Date().toISOString() // ← include timestamp so Supabase actually writes the row
             }));
 
@@ -4659,6 +4669,9 @@
         sorted.sort((a, b) => {
           if (a.pinned && !b.pinned) return -1;
           if (!a.pinned && b.pinned) return 1;
+          if (mode === 'manual') {
+            return (a.position || 0) - (b.position || 0);
+          }
           return 0;
         });
         if (mode === 'date') {
@@ -4881,7 +4894,7 @@
                 </div>`
                 : '';
               const taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
-              return `<div class="task ${escapeHTML(task.category)} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()" onclick="handleTaskInfoClick(event, ${task.id})" ontouchstart="handleTaskTouchStart(event, ${task.id})" ontouchend="handleTaskTouchEnd(event, ${task.id})">
+              return `<div class="task ${escapeHTML(task.category)} ${dueClass} ${pinnedClass}" data-id="${task.id}" onclick="handleTaskInfoClick(event, ${task.id})" ontouchstart="handleTaskTouchStart(event, ${task.id})" ontouchend="handleTaskTouchEnd(event, ${task.id})">
               <div class="task-content">
                 <button class="icon-btn" onclick="event.stopPropagation(); toggleTaskStatus(${task.id})" style="color:${statusColor}; font-size:20px;">${statusIcon}</button>
                 <div class="task-info">
@@ -4912,6 +4925,110 @@
         updateStatsDisplay();
         renderTodayStrip();
         if (typeof renderArchived === 'function') renderArchived(); // Phase 2A
+
+        initSortable();
+      }
+
+      async function handleSortableEnd(evt) {
+        const itemEl = evt.item;
+        const taskIdStr = itemEl.getAttribute('data-id');
+        if (!taskIdStr) return;
+        const taskId = parseFloat(taskIdStr);
+
+        const toContainer = evt.to; // The new container
+        const toQuadId = toContainer.id; // e.g. "tasks-do-first"
+        let quad = toQuadId.replace('tasks-', '');
+
+        let imp = 3, urg = 3;
+        if (quad === 'do-first') { imp = 5; urg = 5; }
+        else if (quad === 'schedule') { imp = 5; urg = 2; }
+        else if (quad === 'delegate') { imp = 2; urg = 5; }
+        else if (quad === 'eliminate') { imp = 2; urg = 2; }
+
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        // Update importance and urgency based on the new quadrant
+        task.importance = imp;
+        task.urgency = urg;
+
+        // Update positions for all items in the new quadrant
+        const children = Array.from(toContainer.children);
+        children.forEach((child, index) => {
+          const childIdStr = child.getAttribute('data-id');
+          if (childIdStr) {
+            const childId = parseFloat(childIdStr);
+            const childTask = tasks.find(t => t.id === childId);
+            if (childTask) {
+              childTask.position = index;
+            }
+          }
+        });
+
+        // Save tasks (batch-upsert or local)
+        await saveTasks();
+
+        // Update counts without full re-render to avoid visual jump, but standard sort requires full render if switching mode.
+        // For drag-drop manual sort, just set the mode to manual and re-render.
+        if (sortModes[quad] !== 'manual') {
+          sortModes[quad] = 'manual';
+          // Update UI sort dropdown
+          const menu = document.getElementById('sort-menu-' + quad);
+          if (menu) {
+            const items = menu.querySelectorAll('.sort-dropdown-item');
+            items.forEach(item => {
+              item.classList.remove('active');
+              if (item.onclick && item.onclick.toString().includes("'manual'")) {
+                item.classList.add('active');
+              }
+            });
+          }
+          render();
+        } else {
+           // If already in manual sort, we update the counts
+           const countId = quad === 'do-first' ? 'count-first' : 'count-' + quad;
+           const count = document.getElementById(countId);
+           if (count) {
+              const activeTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'archived');
+              const quadTasks = activeTasks.filter(t => getQuad(t.importance, t.urgency) === quad);
+              count.textContent = quadTasks.length;
+           }
+
+           if (evt.from !== evt.to) {
+               // Update from quadrant count
+               const fromQuad = evt.from.id.replace('tasks-', '');
+               const fromCountId = fromQuad === 'do-first' ? 'count-first' : 'count-' + fromQuad;
+               const fromCount = document.getElementById(fromCountId);
+               if (fromCount) {
+                  const activeTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'archived');
+                  const fromQuadTasks = activeTasks.filter(t => getQuad(t.importance, t.urgency) === fromQuad);
+                  fromCount.textContent = fromQuadTasks.length;
+               }
+           }
+        }
+      }
+
+      let sortableInstances = [];
+      function initSortable() {
+        // Destroy existing instances to avoid memory leaks or duplicate handlers
+        sortableInstances.forEach(instance => instance.destroy());
+        sortableInstances = [];
+
+        ['do-first', 'schedule', 'delegate', 'eliminate'].forEach(quad => {
+          const container = document.getElementById('tasks-' + quad);
+          if (!container) return;
+
+          const instance = Sortable.create(container, {
+            group: 'shared',
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            dragClass: 'sortable-drag',
+            delay: 200,
+            delayOnTouchOnly: true,
+            onEnd: handleSortableEnd
+          });
+          sortableInstances.push(instance);
+        });
       }
 
       // ── Fix 1: Inline date picker functions ─────────────────────
