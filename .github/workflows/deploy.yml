@@ -5,13 +5,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Grant the GITHUB_TOKEN the minimum permissions needed for Pages deployment
+# Minimum permissions required for Pages deployment
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment; cancel in-progress runs on new pushes
+# Only one deployment at a time; cancel in-progress on new push
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -27,11 +27,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Inject API keys
+      # Secrets are passed as env vars (best practice — never interpolated
+      # directly into run scripts, so values stay masked in logs)
+      - name: Generate src/config.js from secrets
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          cat > src/config.js << 'EOF'
-          window.XAI_API_KEY = '${{ secrets.XAI_API_KEY }}';
-          EOF
+          {
+            printf "window.XAI_API_KEY = '%s';\n"      "$XAI_API_KEY"
+            printf "window.ANTHROPIC_KEY = '%s';\n"    "$ANTHROPIC_KEY"
+            printf "window.SUPABASE_URL = '%s';\n"     "$SUPABASE_URL"
+            printf "window.SUPABASE_ANON_KEY = '%s';\n" "$SUPABASE_ANON_KEY"
+          } > src/config.js
+
+      # Copy only the files the app actually needs — skip node_modules
+      # (Playwright dev dependency would push the artifact over 500 MB)
+      - name: Prepare deploy directory
+        run: |
+          mkdir -p _site/src
+          find . -maxdepth 1 -name "*.html" -exec cp {} _site/ \;
+          cp src/voiceTask.js _site/src/voiceTask.js
+          cp src/config.js   _site/src/config.js
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -39,7 +58,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
 
       - name: Deploy to GitHub Pages
         id: deployment

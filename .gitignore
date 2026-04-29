@@ -1,4 +1,5 @@
 .DS_Store
+# Generated at build time by .github/workflows/deploy.yml — do NOT commit manually
 src/config.js
 node_modules/
 package-lock.json
