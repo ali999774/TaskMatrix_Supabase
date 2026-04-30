@@ -1,36 +1,47 @@
+import { config } from './config.js';
+
 // Voice-to-task pipeline: STT via xAI Grok → parse via xAI grok-3-mini → task object
 // API key is set in src/config.js (gitignored)
 
 async function transcribeAudio(audioBlob) {
-  if (!window.XAI_API_KEY) throw new Error('XAI_API_KEY is not set — fill in src/config.js');
+  if (!config.xaiApiKey) {
+    console.warn('[voiceTask] XAI_API_KEY not set — transcription disabled');
+    return null;
+  }
 
   const mimeType = audioBlob.type || 'audio/mp4';
   const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
   const formData = new FormData();
   formData.append('file', audioBlob, `recording.${ext}`);
+  formData.append('model', 'whisper-large-v3');
 
-  const response = await fetch('https://api.x.ai/v1/stt', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${window.XAI_API_KEY}` },
-    body: formData
-  });
+  try {
+    const response = await fetch('https://api.x.ai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${config.xaiApiKey}` },
+      body: formData
+    });
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`STT failed ${response.status}: ${err}`);
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`STT failed ${response.status}: ${err}`);
+    }
+
+    const result = await response.json();
+    return result.text;
+  } catch (err) {
+    console.warn('[voiceTask] STT fetch error:', err);
+    throw err;
   }
-
-  const result = await response.json();
-  return result.text;
 }
 
 async function parseTranscript(transcript) {
-  if (!window.XAI_API_KEY) throw new Error('XAI_API_KEY is not set — fill in src/config.js');
+  if (!config.xaiApiKey) throw new Error('XAI_API_KEY is not set — fill in src/config.js');
 
   const response = await fetch('https://api.x.ai/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${window.XAI_API_KEY}`,
+      'Authorization': `Bearer ${config.xaiApiKey}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
