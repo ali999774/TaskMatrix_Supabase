@@ -10,10 +10,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TaskMatrix</title>
+  <link rel="manifest" href="/TaskMatrix_Supabase/public/manifest.json">
   <meta name="theme-color" content="#6366f1">
   <link rel="icon"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
-  <link rel="manifest" href="public/manifest.json">
   <style>
     :root {
       /* Base Colors */
@@ -3904,7 +3904,12 @@
             await addVoiceTask(voiceResult);
             setVoiceBtnState('done');
           } catch (err) {
-            console.error('[voiceTask] pipeline failed:', err);
+            if (err.message && err.message.includes('XAI_API_KEY')) {
+              console.warn('[voiceTask] pipeline gracefully aborted:', err.message);
+              if (typeof alert === 'function') alert('Voice feature requires XAI_API_KEY to be set in config.');
+            } else {
+              console.error('[voiceTask] pipeline failed:', err);
+            }
             setVoiceBtnState('error');
           }
         };
@@ -3968,7 +3973,12 @@
             await transcribeAndSaveNote(audioBlob);
             setVoiceNoteBtnState('done');
           } catch (err) {
-            console.error('[voiceNote] pipeline failed:', err);
+            if (err.message && err.message.includes('XAI_API_KEY')) {
+              console.warn('[voiceNote] pipeline gracefully aborted:', err.message);
+              if (typeof alert === 'function') alert('Voice feature requires XAI_API_KEY to be set in config.');
+            } else {
+              console.error('[voiceNote] pipeline failed:', err);
+            }
             setVoiceNoteBtnState('error');
           }
         };
