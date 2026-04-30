@@ -31,6 +31,7 @@ jobs:
       # directly into run scripts, so values stay masked in logs)
       - name: Generate src/config.js from secrets
         env:
+          VITE_XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
