@@ -52,6 +52,7 @@ jobs:
           find . -maxdepth 1 -name "*.html" -exec cp {} _site/ \;
           cp src/voiceTask.js _site/src/voiceTask.js
           cp src/config.js   _site/src/config.js
+          cp -r public _site/public
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
