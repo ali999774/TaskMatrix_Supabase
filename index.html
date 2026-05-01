@@ -3846,10 +3846,32 @@
         }
       }
 
+      // ── Toast helper (non-blocking user feedback) ────────────────
+      function showToast(message, durationMs) {
+        durationMs = durationMs || 3000;
+        const existing = document.querySelector('.voice-toast');
+        if (existing) existing.remove();
+        const toast = document.createElement('div');
+        toast.className = 'voice-toast';
+        toast.textContent = message;
+        toast.style.cssText = `
+          position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+          background:var(--bg-glass); border:1px solid var(--border-color);
+          border-radius:10px; padding:10px 20px; z-index:600;
+          font-size:14px; color:var(--text-primary);
+          box-shadow:0 8px 24px rgba(0,0,0,0.12);
+          backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; }, durationMs - 300);
+        setTimeout(() => toast.remove(), durationMs);
+      }
+
       // ── Voice-to-task ────────────────────────────────────────────
       let _voiceMediaRecorder = null;
       let _voiceAudioChunks = [];
       let _voiceMimeType = 'audio/webm';
+      let _voiceRecordingStartTime = 0;
 
       const _voiceBtnStates = {
         idle:       { text: '🎤', title: 'Hold to speak',   cls: '',                 disabled: false },
@@ -3874,40 +3896,86 @@
 
       async function startVoiceRecording(e) {
         e.preventDefault();
-        if (_voiceMediaRecorder && _voiceMediaRecorder.state === 'recording') return;
+        // Guard: prevent double-initialization
+        if (_voiceMediaRecorder) {
+          if (_voiceMediaRecorder.state === 'recording') return;
+          // Stale recorder from a previous session — clean up
+          try { _voiceMediaRecorder.stream.getTracks().forEach(t => t.stop()); } catch (ex) {}
+          _voiceMediaRecorder = null;
+        }
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const mimeType = 'audio/mp4';
+          const mimeType = window._getSupportedVoiceMimeType ? window._getSupportedVoiceMimeType() : 'audio/webm';
           _voiceMimeType = mimeType;
           _voiceAudioChunks = [];
+          _voiceRecordingStartTime = Date.now();
           _voiceMediaRecorder = new MediaRecorder(stream, { mimeType });
-          _voiceMediaRecorder.ondataavailable = ev => _voiceAudioChunks.push(ev.data);
+          _voiceMediaRecorder.ondataavailable = ev => { if (ev.data.size > 0) _voiceAudioChunks.push(ev.data); };
+          _voiceMediaRecorder.onerror = (ev) => {
+            console.error('[voiceTask] MediaRecorder error:', ev.error);
+            setVoiceBtnState('error');
+            showToast('Recording failed — try again');
+          };
           _voiceMediaRecorder.start();
           setVoiceBtnState('recording');
         } catch (err) {
           console.error('[voiceTask] mic access failed:', err);
           setVoiceBtnState('error');
+          const msg = err.name === 'NotAllowedError' ? 'Microphone access denied — check browser permissions'
+            : err.name === 'NotFoundError' ? 'No microphone found'
+            : 'Could not access microphone';
+          showToast(msg);
         }
       }
 
       async function stopVoiceRecording(e) {
         e.preventDefault();
         if (!_voiceMediaRecorder || _voiceMediaRecorder.state !== 'recording') return;
-        setVoiceBtnState('processing');
-        _voiceMediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(_voiceAudioChunks, { type: _voiceMimeType });
+
+        const duration = (Date.now() - _voiceRecordingStartTime) / 1000;
+        if (duration < 0.5) {
+          // Too short — likely accidental tap
           _voiceMediaRecorder.stream.getTracks().forEach(t => t.stop());
           _voiceMediaRecorder = null;
+          _voiceAudioChunks = [];
+          setVoiceBtnState('idle');
+          showToast('Hold to record — tap was too short', 2000);
+          return;
+        }
+
+        setVoiceBtnState('processing');
+        _voiceMediaRecorder.onstop = async () => {
+          const stream = _voiceMediaRecorder?.stream;
+          const audioBlob = new Blob(_voiceAudioChunks, { type: _voiceMimeType });
+          _voiceAudioChunks = [];
+          if (stream) { try { stream.getTracks().forEach(t => t.stop()); } catch (ex) {} }
+          _voiceMediaRecorder = null;
+
+          if (audioBlob.size < 100) {
+            setVoiceBtnState('error');
+            showToast('No audio captured — try again', 3000);
+            return;
+          }
+
           try {
             const voiceResult = await handleVoiceTask(audioBlob);
             await addVoiceTask(voiceResult);
             setVoiceBtnState('done');
           } catch (err) {
-            if (err.message && err.message.includes('XAI_API_KEY')) {
-              console.warn('[voiceTask] pipeline gracefully aborted:', err.message);
-              if (typeof alert === 'function') alert('Voice feature requires XAI_API_KEY to be set in config.');
+            const msg = (err.message || '');
+            console.error('[voiceTask] pipeline failed:', err);
+            if (msg.startsWith('voice:no_api_key')) {
+              showToast('Voice feature needs API key — set XAI_API_KEY in src/config.js', 4000);
+            } else if (msg.startsWith('voice:no_audio')) {
+              showToast('No speech detected — try speaking louder', 3000);
+            } else if (msg.startsWith('voice:timeout')) {
+              showToast('Voice server timed out — check your connection', 4000);
+            } else if (msg.startsWith('voice:auth_error')) {
+              showToast('API key rejected — check your XAI_API_KEY', 4000);
+            } else if (msg.startsWith('voice:empty_transcript')) {
+              showToast('No speech detected — try again', 3000);
             } else {
-              console.error('[voiceTask] pipeline failed:', err);
+              showToast('Voice failed — try again', 3000);
             }
             setVoiceBtnState('error');
           }
@@ -3919,6 +3987,7 @@
       let _voiceNoteMediaRecorder = null;
       let _voiceNoteAudioChunks = [];
       let _voiceNoteMimeType = 'audio/webm';
+      let _voiceNoteRecordingStartTime = 0;
 
       const _voiceNoteBtnStates = {
         idle:       { text: '📝', title: 'Voice note',       cls: '',               disabled: false },
@@ -3943,39 +4012,84 @@
 
       async function startVoiceNoteRecording(e) {
         e.preventDefault();
-        if (_voiceNoteMediaRecorder && _voiceNoteMediaRecorder.state === 'recording') return;
+        if (_voiceNoteMediaRecorder) {
+          if (_voiceNoteMediaRecorder.state === 'recording') return;
+          try { _voiceNoteMediaRecorder.stream.getTracks().forEach(t => t.stop()); } catch (ex) {}
+          _voiceNoteMediaRecorder = null;
+        }
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const mimeType = 'audio/mp4';
+          const mimeType = window._getSupportedVoiceMimeType ? window._getSupportedVoiceMimeType() : 'audio/webm';
           _voiceNoteMimeType = mimeType;
           _voiceNoteAudioChunks = [];
+          _voiceNoteRecordingStartTime = Date.now();
           _voiceNoteMediaRecorder = new MediaRecorder(stream, { mimeType });
-          _voiceNoteMediaRecorder.ondataavailable = ev => _voiceNoteAudioChunks.push(ev.data);
+          _voiceNoteMediaRecorder.ondataavailable = ev => { if (ev.data.size > 0) _voiceNoteAudioChunks.push(ev.data); };
+          _voiceNoteMediaRecorder.onerror = (ev) => {
+            console.error('[voiceNote] MediaRecorder error:', ev.error);
+            setVoiceNoteBtnState('error');
+            showToast('Note recording failed — try again');
+          };
           _voiceNoteMediaRecorder.start();
           setVoiceNoteBtnState('recording');
         } catch (err) {
           console.error('[voiceNote] mic access failed:', err);
           setVoiceNoteBtnState('error');
+          const msg = err.name === 'NotAllowedError' ? 'Microphone access denied — check browser permissions'
+            : err.name === 'NotFoundError' ? 'No microphone found'
+            : 'Could not access microphone';
+          showToast(msg);
         }
       }
 
       async function stopVoiceNoteRecording(e) {
         e.preventDefault();
         if (!_voiceNoteMediaRecorder || _voiceNoteMediaRecorder.state !== 'recording') return;
-        setVoiceNoteBtnState('processing');
-        _voiceNoteMediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(_voiceNoteAudioChunks, { type: _voiceNoteMimeType });
+
+        const duration = (Date.now() - _voiceNoteRecordingStartTime) / 1000;
+        if (duration < 0.5) {
           _voiceNoteMediaRecorder.stream.getTracks().forEach(t => t.stop());
           _voiceNoteMediaRecorder = null;
+          _voiceNoteAudioChunks = [];
+          setVoiceNoteBtnState('idle');
+          showToast('Hold to record — tap was too short', 2000);
+          return;
+        }
+
+        setVoiceNoteBtnState('processing');
+        _voiceNoteMediaRecorder.onstop = async () => {
+          const stream = _voiceNoteMediaRecorder?.stream;
+          const audioBlob = new Blob(_voiceNoteAudioChunks, { type: _voiceNoteMimeType });
+          _voiceNoteAudioChunks = [];
+          if (stream) { try { stream.getTracks().forEach(t => t.stop()); } catch (ex) {} }
+          _voiceNoteMediaRecorder = null;
+
+          if (audioBlob.size < 100) {
+            setVoiceNoteBtnState('error');
+            showToast('No audio captured — try again', 3000);
+            return;
+          }
+
           try {
             await transcribeAndSaveNote(audioBlob);
             setVoiceNoteBtnState('done');
           } catch (err) {
-            if (err.message && err.message.includes('XAI_API_KEY')) {
-              console.warn('[voiceNote] pipeline gracefully aborted:', err.message);
-              if (typeof alert === 'function') alert('Voice feature requires XAI_API_KEY to be set in config.');
+            const msg = (err.message || '');
+            console.error('[voiceNote] pipeline failed:', err);
+            if (msg.startsWith('voice:no_api_key')) {
+              showToast('Voice feature needs API key — set XAI_API_KEY in src/config.js', 4000);
+            } else if (msg.startsWith('voice:no_audio')) {
+              showToast('No speech detected — try speaking louder', 3000);
+            } else if (msg.startsWith('voice:timeout')) {
+              showToast('Voice server timed out — check your connection', 4000);
+            } else if (msg.startsWith('voice:auth_error')) {
+              showToast('API key rejected — check your XAI_API_KEY', 4000);
+            } else if (msg.startsWith('voice:empty_transcript')) {
+              showToast('No speech detected — try again', 3000);
+            } else if (msg.startsWith('voice:bridge_not_ready')) {
+              showToast('App still loading — try again in a moment', 3000);
             } else {
-              console.error('[voiceNote] pipeline failed:', err);
+              showToast('Voice note failed — try again', 3000);
             }
             setVoiceNoteBtnState('error');
           }
