@@ -5,7 +5,6 @@
   <script src="src/config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.js"></script>
-  <script src="src/config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2547,7 +2546,7 @@
       // Tracks the most-recent saveTasks() promise so quickAddMoveTo() can
       // await the handleQuickAdd INSERT before doing its own save — preventing
       // a duplicate INSERT when the task has no supabaseId yet.
-      let _pendingSaveTasksPromise = Promise.resolve();
+      let _pendingSaveTasksPromise = null;
       // FIX 2: retry state for failed saves
       let saveRetryCount = 0;
       let saveRetryTimer = null;
@@ -2773,16 +2772,17 @@
         box-shadow:0 10px 25px rgba(0,0,0,0.1); display:flex;
         align-items:center; gap:16px; font-size:14px; color:var(--danger);
       `
-        banner.innerHTML = `
-        <span>⚠ Session expired</span>
-        <button onclick="signInWithGoogle()"
-          style="background:var(--primary);color:white;border:none;
-          padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;">
-          Sign in again
-        </button>
-        <button onclick="document.getElementById('session-expired-banner').remove()"
-          style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:18px;">×</button>
-      `
+        const span = document.createElement('span');
+        span.textContent = '⚠ Session expired';
+        const signInBtn = document.createElement('button');
+        signInBtn.textContent = 'Sign in again';
+        signInBtn.onclick = signInWithGoogle;
+        signInBtn.style.cssText = 'background:var(--primary);color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;';
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.onclick = () => banner.remove();
+        closeBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:18px;';
+        banner.append(span, signInBtn, closeBtn);
         document.body.appendChild(banner)
       }
 
@@ -2926,20 +2926,17 @@
                   const note = JSON.parse(noteRow.data);
                   noteRowsMap.set(note.id, { row: noteRow, note });
                   if (note.supabaseId) {
-                    const { error } = await supabaseClient
-                      .from('sticky_notes')
-                      .upsert({
-                        id: note.supabaseId,
-                        user_id: currentUser.id,
-                        title: note.title || '',
-                        content: note.content || '',
-                        color: note.color || 'yellow',
-                        position_x: note.x || 0,
-                        position_y: note.y || 0,
-                        pinned: note.pinned || false,
-                        updated_at: new Date().toISOString()
-                      }, { onConflict: 'id' })
-                    noteError = error
+                    toUpdateNotes.push({
+                      id: note.supabaseId,
+                      user_id: currentUser.id,
+                      title: note.title || '',
+                      content: note.content || '',
+                      color: note.color || 'yellow',
+                      position_x: note.x || 0,
+                      position_y: note.y || 0,
+                      pinned: note.pinned || false,
+                      updated_at: new Date().toISOString()
+                    });
                   } else {
                     toInsertNotes.push({
                       user_id: currentUser.id,
@@ -3099,6 +3096,9 @@
       }
 
       // ── Supabase data operations ─────────────────────────────────
+      let _supabaseSyncInFlight = null;
+      let _supabaseSyncDirty = false;
+
       async function saveTasks() {
         _saveInFlightCount++;
         localChangeInFlight = true;
@@ -3107,8 +3107,6 @@
             console.warn('[saveTasks] No currentUser — skipping save');
             return;
           }
-          // BUG FIX 2: Do NOT set 'syncing' (orange dot) here. Dexie write below
-          // already persists data safely. Orange only appears if Supabase fails.
 
           // Write to Dexie first (always succeeds offline)
           try {
@@ -3123,8 +3121,36 @@
             console.warn('[saveTasks] Dexie write failed:', dexieErr)
           }
 
+          // Single-flight dedup: if a Supabase sync is already in progress,
+          // mark dirty and return the in-flight promise so all callers await
+          // the same operation. After completion, auto-retry if dirty.
+          if (_supabaseSyncInFlight) {
+            _supabaseSyncDirty = true;
+            return _supabaseSyncInFlight;
+          }
+
+          _supabaseSyncInFlight = _doSupabaseSync().finally(() => {
+            _supabaseSyncInFlight = null;
+          });
+          return _supabaseSyncInFlight;
+        } finally {
+          // BUG 1 FIX: delay releasing the guard so the Realtime INSERT echo
+          // (which arrives ~100-400ms after the Supabase response) is still blocked.
+          // Use clearTimeout so rapid consecutive saveTasks() calls reset the
+          // 500ms window rather than stacking timers — the first timer used to
+          // fire mid-flight for a second call, prematurely clearing the guard.
+          _saveInFlightCount--;
+          if (_saveInFlightCount === 0) {
+            clearTimeout(_localChangeInFlightTimer);
+            _localChangeInFlightTimer = setTimeout(() => { localChangeInFlight = false; }, 500);
+          }
+        }
+      }
+
+      async function _doSupabaseSync() {
+        do {
+          _supabaseSyncDirty = false;
           try {
-            // Fix 1: per-row upsert — no delete+insert
             const toInsert = tasks.filter(t => !t.supabaseId).map(t => ({
               user_id: currentUser.id,
               title: t.title,
@@ -3150,7 +3176,7 @@
               id: t.supabaseId,
               user_id: currentUser.id,
               title: t.title,
-              notes: t.notes || '',          // ← notes always included
+              notes: t.notes || '',
               category: t.category || 'personal',
               importance: t.importance,
               urgency: t.urgency,
@@ -3166,31 +3192,21 @@
               subtasks: t.subtasks || [],
               pinned: t.pinned || false,
               position: t.position || 0,
-              updated_at: new Date().toISOString() // ← include timestamp so Supabase actually writes the row
+              updated_at: new Date().toISOString()
             }));
 
             let allData = [];
 
             if (toUpdate.length > 0) {
-              console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
-              const upsertPromises = toUpdate.map(t =>
-                supabaseClient
-                  .from('tasks')
-                  .upsert(t, { onConflict: 'id' })
-                  .select()
-              );
-              const results = await Promise.all(upsertPromises);
-              for (const { data, error } of results) {
-                if (error) {
-                  console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
-                  console.error('[DEBUG 4] full error object:', JSON.stringify(error));
-                  throw error;
-                } else {
-                  if (data) allData.push(...data);
-                }
+              const { data, error } = await supabaseClient
+                .from('tasks')
+                .upsert(toUpdate, { onConflict: 'id' })
+                .select();
+              if (error) {
+                console.error('[saveTasks] batch upsert ERROR:', error.code, error.message, error.details);
+                throw error;
               }
-
-              console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(allData[0]?.notes));
+              if (data) allData.push(...data);
             }
 
             if (toInsert.length > 0) {
@@ -3203,16 +3219,10 @@
             }
 
             if (allData.length > 0) {
-              // First pass: match rows that already have a supabaseId (upserts)
               allData.forEach(row => {
                 const task = tasks.find(t => t.supabaseId === row.id);
-                if (task) task.supabaseId = row.id; // confirm (no-op but explicit)
+                if (task) task.supabaseId = row.id;
               });
-              // Second pass: match newly-INSERTed rows by array position.
-              // Supabase returns rows in the same order as the input array, so
-              // toInsert[i] corresponds to allData rows NOT already matched above.
-              // Using positional matching instead of title avoids creating duplicate
-              // supabaseId assignments when two tasks share the same title.
               const insertedRows = allData.filter(row => !tasks.find(t => t.supabaseId === row.id));
               toInsert.forEach((localTask, i) => {
                 const row = insertedRows[i];
@@ -3220,13 +3230,10 @@
                 const memTask = tasks.find(t => t.id === localTask.id);
                 if (memTask && !memTask.supabaseId) {
                   memTask.supabaseId = row.id;
-                  localTask.supabaseId = row.id;
-                  console.log('[TaskMatrix] saveTasks → INSERT supabaseId assigned by position', { localId: localTask.id, title: row.title, supabaseId: row.id });
                 }
               });
             }
 
-            // Mark as synced locally
             if (db) {
               await db.tasks.bulkPut(tasks.map(t => ({
                 localId: t.id,
@@ -3234,14 +3241,13 @@
                 pendingSync: 0,
                 updatedAt: new Date().toISOString(),
                 data: JSON.stringify(t)
-              })))
+              })));
             }
 
             setSyncState('synced');
-            saveRetryCount = 0; // reset retry counter on success
+            saveRetryCount = 0;
             clearTimeout(saveRetryTimer);
           } catch (err) {
-            // BUG FIX 2: Orange dot only on actual Supabase failure (not on write start)
             await handleSupabaseError(err, 'saveTasks');
             if (navigator.onLine && saveRetryCount < SAVE_RETRY_DELAYS.length) {
               const delay = SAVE_RETRY_DELAYS[saveRetryCount++];
@@ -3249,20 +3255,8 @@
               saveRetryTimer = setTimeout(() => { saveTasks(); }, delay);
             }
           }
-        } finally {
-          // BUG 1 FIX: delay releasing the guard so the Realtime INSERT echo
-          // (which arrives ~100-400ms after the Supabase response) is still blocked.
-          // Use clearTimeout so rapid consecutive saveTasks() calls reset the
-          // 500ms window rather than stacking timers — the first timer used to
-          // fire mid-flight for a second call, prematurely clearing the guard.
-          _saveInFlightCount--;
-          if (_saveInFlightCount === 0) {
-            clearTimeout(_localChangeInFlightTimer);
-            _localChangeInFlightTimer = setTimeout(() => { localChangeInFlight = false; }, 500);
-          }
-        }
+        } while (_supabaseSyncDirty);
       }
-
 
       // silent=true skips sync-dot state changes (used by Realtime handler to avoid
       // clearing the 800ms green-debounce timer that a concurrent save already started)
@@ -3362,14 +3356,20 @@
         }
       }
 
+      let _notesSyncInFlight = null;
+      let _notesSyncDirty = false;
+
       async function saveNotesToSupabase(notesArray) {
         if (!currentUser) return;
-        // BUG FIX 4: Write to Dexie FIRST (data is safe locally regardless of network).
-        // Always mark pendingSync:1 here; clear it to 0 only after Supabase succeeds.
-        // Do NOT set orange dot before write — only on Supabase failure.
         if (db) {
           try {
-            await db.notes.clear();
+            // Targeted delete: only remove Dexie entries no longer in notesArray
+            const currentIds = new Set(notesArray.map(n => n.id));
+            const dexieNotes = await db.notes.toArray();
+            const toDelete = dexieNotes.filter(r => !currentIds.has(r.localId));
+            if (toDelete.length > 0) {
+              await db.notes.bulkDelete(toDelete.map(r => r.localId));
+            }
             if (notesArray.length > 0) {
               await db.notes.bulkPut(notesArray.map(n => ({
                 localId: n.id,
@@ -3389,9 +3389,17 @@
           return;
         }
 
-        try {
-          // NEVER nuke the whole table. Delete only explicitly removed notes,
-          // then upsert/insert the rest individually.
+        // Single-flight dedup for notes sync
+        if (_notesSyncInFlight) {
+          _notesSyncDirty = true;
+          return _notesSyncInFlight;
+        }
+
+        _notesSyncInFlight = (async () => {
+          do {
+            _notesSyncDirty = false;
+            try {
+          // Only delete explicitly removed notes, then upsert/insert the rest.
           if (pendingNoteDeletes.length > 0) {
             const { error: delErr } = await supabaseClient
               .from('sticky_notes')
@@ -3406,28 +3414,22 @@
             const toUpdate = notesArray.filter(n => n.supabaseId);
 
             if (toUpdate.length > 0) {
-              const upsertPromises = toUpdate.map(n =>
-                supabaseClient
-                  .from('sticky_notes')
-                  .upsert({
-                    id: n.supabaseId,
-                    user_id: currentUser.id,
-                    title: n.title || '',
-                    content: n.content || '',
-                    color: n.color || 'yellow',
-                    position_x: n.x || 0,
-                    position_y: n.y || 0,
-                    pinned: n.pinned || false,
-                    updated_at: new Date().toISOString()
-                  }, { onConflict: 'id' })
-              );
-              const results = await Promise.all(upsertPromises);
-              for (const { error } of results) {
-                // BUG 1 FIX: make Supabase note upsert failures visible in DevTools
-                if (error) {
-                  console.error('[saveNotes] Supabase upsert FAILED — notes remain in Dexie (pendingSync:1):', error);
-                  throw error;
-                }
+              const { error } = await supabaseClient
+                .from('sticky_notes')
+                .upsert(toUpdate.map(n => ({
+                  id: n.supabaseId,
+                  user_id: currentUser.id,
+                  title: n.title || '',
+                  content: n.content || '',
+                  color: n.color || 'yellow',
+                  position_x: n.x || 0,
+                  position_y: n.y || 0,
+                  pinned: n.pinned || false,
+                  updated_at: new Date().toISOString()
+                })), { onConflict: 'id' });
+              if (error) {
+                console.error('[saveNotes] batch upsert FAILED:', error);
+                throw error;
               }
             }
 
@@ -3456,10 +3458,9 @@
                     match.id = row.id; // stable UUID id going forward
                   }
                 });
-                // Refresh Dexie with now-stable IDs
+                // Refresh Dexie with now-stable IDs (bulkPut upserts by primary key)
                 if (db) {
                   try {
-                    await db.notes.clear();
                     await db.notes.bulkPut(notesArray.map(n => ({
                       localId: n.id,
                       supabaseId: n.supabaseId || null,
@@ -3474,30 +3475,29 @@
               }
             }
           }
-          // BUG FIX 4: Supabase succeeded — clear pendingSync in Dexie and keep dot green
+          // Supabase succeeded — mark all notes as synced in Dexie
           if (db) {
             try {
-              await db.notes.clear();
-              if (notesArray.length > 0) {
-                await db.notes.bulkPut(notesArray.map(n => ({
-                  localId: n.id,
-                  supabaseId: n.supabaseId || null,
-                  pendingSync: 0,
-                  updatedAt: new Date().toISOString(),
-                  data: JSON.stringify(n)
-                })));
-              }
+              await db.notes.bulkPut(notesArray.map(n => ({
+                localId: n.id,
+                supabaseId: n.supabaseId || null,
+                pendingSync: 0,
+                updatedAt: new Date().toISOString(),
+                data: JSON.stringify(n)
+              })));
             } catch (dexieErr) {
-              console.warn('[saveNotes] Dexie sync-clear failed:', dexieErr);
+              console.warn('[saveNotes] Dexie final sync write failed:', dexieErr);
             }
           }
           setSyncState('synced');
-        } catch (err) {
-          // BUG FIX 4: Only go orange/red on actual Supabase failure.
-          // Dexie already has the note with pendingSync:1 — it will retry on reconnect.
-          console.error('Notes save error:', err);
-          setSyncState('error');
-        }
+            } catch (err) {
+              console.error('Notes save error:', err);
+              setSyncState('error');
+            }
+          } while (_notesSyncDirty);
+          _notesSyncInFlight = null;
+        })();
+        return _notesSyncInFlight;
       }
 
       async function loadNotesFromSupabase() {
@@ -3881,7 +3881,6 @@
           _voiceMimeType = mimeType;
           _voiceAudioChunks = [];
           _voiceMediaRecorder = new MediaRecorder(stream, { mimeType });
-          _voiceMediaRecorder._mimeType = mimeType;
           _voiceMediaRecorder.ondataavailable = ev => _voiceAudioChunks.push(ev.data);
           _voiceMediaRecorder.start();
           setVoiceBtnState('recording');
@@ -3951,7 +3950,6 @@
           _voiceNoteMimeType = mimeType;
           _voiceNoteAudioChunks = [];
           _voiceNoteMediaRecorder = new MediaRecorder(stream, { mimeType });
-          _voiceNoteMediaRecorder._mimeType = mimeType;
           _voiceNoteMediaRecorder.ondataavailable = ev => _voiceNoteAudioChunks.push(ev.data);
           _voiceNoteMediaRecorder.start();
           setVoiceNoteBtnState('recording');
@@ -5533,13 +5531,23 @@
           if (archivedVisible) { sectionEl.style.display = 'none'; archivedVisible = false; }
           return;
         }
-        listEl.innerHTML = archived.map(task => `
-        <div class="archived-task-row">
-          <span class="archived-title">${escapeHTML(task.title)}</span>
-          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${task.dueDate || ''}</span>
-          <button class="restore-btn" onclick="restoreTask(${task.id})">Restore</button>
-        </div>
-      `).join('');
+        listEl.innerHTML = '';
+      archived.forEach(task => {
+        const row = document.createElement('div');
+        row.className = 'archived-task-row';
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'archived-title';
+        titleSpan.textContent = task.title;
+        const dateSpan = document.createElement('span');
+        dateSpan.style.cssText = 'font-size:11px;color:var(--text-muted);white-space:nowrap;';
+        dateSpan.textContent = task.dueDate || '';
+        const restoreBtn = document.createElement('button');
+        restoreBtn.className = 'restore-btn';
+        restoreBtn.textContent = 'Restore';
+        restoreBtn.onclick = () => restoreTask(task.id);
+        row.append(titleSpan, dateSpan, restoreBtn);
+        listEl.appendChild(row);
+      });
       }
 
       function showArchivedSection() {
@@ -5563,6 +5571,7 @@
       let _keepaliveInterval = null;
 
       function startKeepalive() {
+        if (navigator.connection?.saveData) return; // skip on metered connections
         if (_keepaliveInterval) clearInterval(_keepaliveInterval);
         _keepaliveInterval = setInterval(async () => {
           if (!supabaseClient || !navigator.onLine) return;
@@ -5631,23 +5640,12 @@
               // BUG FIX 3: Start keepalive after first successful subscription
               startKeepalive();
             } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-              // BUG FIX 3: Retry once after 2 s before marking as disconnected
+              // Retry: recreate channel to avoid accumulating duplicate handlers
               console.warn('[realtime] tasks channel ' + status + ' — scheduling retry')
               clearTimeout(_tasksRetryTimer);
               _tasksRetryTimer = setTimeout(() => {
-                const state = _tasksChannel.state;
-                if (state !== 'joined' && state !== 'joining') {
-                  _tasksChannel.subscribe((retryStatus) => {
-                    if (retryStatus === 'SUBSCRIBED') {
-                      _tasksChannelReady = true;
-                      setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady);
-                      startKeepalive();
-                    } else if (retryStatus === 'CLOSED' || retryStatus === 'CHANNEL_ERROR') {
-                      _tasksChannelReady = false;
-                      setSyncRealtimeConnected(false);
-                    }
-                  });
-                }
+                _tasksChannel?.unsubscribe?.();
+                setupTasksRealtime(userId);
               }, 2000);
             }
           });
@@ -5676,22 +5674,12 @@
               _notesChannelReady = true
               setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady)
             } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-              // BUG FIX 3: Retry once after 2 s before marking as disconnected
+              // Retry: recreate channel to avoid accumulating duplicate handlers
               console.warn('[realtime] notes channel ' + status + ' — scheduling retry')
               clearTimeout(_notesRetryTimer);
               _notesRetryTimer = setTimeout(() => {
-                const state = _notesChannel.state;
-                if (state !== 'joined' && state !== 'joining') {
-                  _notesChannel.subscribe((retryStatus) => {
-                    if (retryStatus === 'SUBSCRIBED') {
-                      _notesChannelReady = true;
-                      setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady);
-                    } else if (retryStatus === 'CLOSED' || retryStatus === 'CHANNEL_ERROR') {
-                      _notesChannelReady = false;
-                      setSyncRealtimeConnected(false);
-                    }
-                  });
-                }
+                _notesChannel?.unsubscribe?.();
+                setupNotesRealtime(userId);
               }, 2000);
             }
           });
@@ -6039,8 +6027,6 @@
         Sign in with Google
       </button>
     </div>
-    <script>window.XAI_API_KEY = "YOUR_NEW_KEY_HERE";</script>
-    <script>window.XAI_API_KEY = "xai-o4N0a7IFs2mZDMMCEm6cWXnl5E3Uu5JEimfnxl2bkqP4yq5epKcVnozezkQ2wbb71A1ZoaIIXJKaVtZ1";</script>
     <script src="src/voiceTask.js"></script>
 
 </body>
