@@ -1,10 +1,8 @@
-import { config } from './config.js';
-
 // Voice-to-task pipeline: STT via xAI Grok → parse via xAI grok-3-mini → task object
 // API key is set in src/config.js (gitignored)
 
 async function transcribeAudio(audioBlob) {
-  if (!config.xaiApiKey) {
+  if (!window.XAI_API_KEY) {
     console.warn('[voiceTask] XAI_API_KEY not set — transcription disabled');
     return null;
   }
@@ -18,7 +16,7 @@ async function transcribeAudio(audioBlob) {
   try {
     const response = await fetch('https://api.x.ai/v1/audio/transcriptions', {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${config.xaiApiKey}` },
+      headers: { 'Authorization': `Bearer ${window.XAI_API_KEY}` },
       body: formData
     });
 
@@ -36,12 +34,12 @@ async function transcribeAudio(audioBlob) {
 }
 
 async function parseTranscript(transcript) {
-  if (!config.xaiApiKey) throw new Error('XAI_API_KEY is not set — fill in src/config.js');
+  if (!window.XAI_API_KEY) throw new Error('XAI_API_KEY is not set — fill in src/config.js');
 
   const response = await fetch('https://api.x.ai/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${config.xaiApiKey}`,
+      'Authorization': `Bearer ${window.XAI_API_KEY}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
