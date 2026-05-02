@@ -38,13 +38,13 @@ async function transcribeAudio(audioBlob) {
   const ext = mimeToExt(mimeType);
   const formData = new FormData();
   formData.append('file', audioBlob, `recording.${ext}`);
-  formData.append('model', 'whisper-large-v3');
+  formData.append('model', 'grok-stt');
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
   try {
-    const response = await fetch('https://api.x.ai/v1/audio/transcriptions', {
+    const response = await fetch('https://api.x.ai/v1/stt', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${window.XAI_API_KEY}` },
       body: formData,

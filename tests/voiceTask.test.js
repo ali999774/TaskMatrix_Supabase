@@ -102,7 +102,7 @@ describe('transcribeAudio', () => {
     const result = await transcribeAudio(bigBlob);
     expect(result).toBe('Hello world');
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.x.ai/v1/audio/transcriptions',
+      'https://api.x.ai/v1/stt',
       expect.objectContaining({
         method: 'POST',
         headers: { 'Authorization': 'Bearer test-key' },
