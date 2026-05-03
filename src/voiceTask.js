@@ -38,7 +38,6 @@ async function transcribeAudio(audioBlob) {
   const ext = mimeToExt(mimeType);
   const formData = new FormData();
   formData.append('file', audioBlob, `recording.${ext}`);
-  formData.append('model', 'grok-stt');
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
