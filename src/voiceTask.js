@@ -1,6 +1,7 @@
-// Voice-to-task pipeline: STT via xAI Grok → parse via xAI Grok → task object
-// API key is set in src/config.js (gitignored)
+// Voice-to-task pipeline: STT via xAI Grok → parse via ModelRouter → task object
+// API key is set in src/config.js (gitignored). Model router handles LLM inference.
 // Bridges into index.html via window._tm* for notes, and exposes handleVoiceTask for tasks.
+// Requires: src/config.js, src/model-router.js loaded first
 // ─────────────────────────────────────────────────────────────────────
 
 // Detect supported audio MIME type for the current browser.
@@ -23,6 +24,7 @@ function mimeToExt(mimeType) {
 // ── STT via xAI Grok ──────────────────────────────────────────────
 // Accepts an audio Blob and returns the transcribed text.
 // Throws on any failure so callers have a clean error path.
+// Note: STT stays on xAI — it's speech-to-text, not LLM inference.
 
 async function transcribeAudio(audioBlob) {
   if (!window.XAI_API_KEY) {
@@ -72,9 +74,10 @@ async function transcribeAudio(audioBlob) {
   }
 }
 
-// ── Structured parsing via xAI Grok ────────────────────────────────
+// ── Structured parsing via ModelRouter ─────────────────────────────
 // Takes raw transcript text and returns { title, quadrant }.
-// Falls back to using raw text as title (do-first) if parsing fails.
+// Uses ModelRouter.complete() — works with edge (WebGPU), cloud, or local tier.
+// Falls back to raw text as title (do-first) if all tiers fail.
 
 const PARSE_SYSTEM_PROMPT =
   'You are a task parser for an Eisenhower Matrix. ' +
@@ -83,44 +86,21 @@ const PARSE_SYSTEM_PROMPT =
   'No explanation, no markdown, just JSON.';
 
 async function parseTranscript(transcript) {
-  if (!window.XAI_API_KEY) throw new Error('voice:no_api_key');
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000); // 15s for LLM call
-
   try {
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${window.XAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'grok-4-1-fast',
-        messages: [
-          { role: 'system', content: PARSE_SYSTEM_PROMPT },
-          { role: 'user', content: transcript }
-        ],
-        max_tokens: 100
-      }),
-      signal: controller.signal
+    const result = await ModelRouter.complete({
+      system: PARSE_SYSTEM_PROMPT,
+      user: transcript,
+      maxTokens: 100
     });
 
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`voice:parse_failed:${response.status}:${errText.substring(0, 80)}`);
-    }
-
-    const data = await response.json();
-    const raw = (data.choices?.[0]?.message?.content || '').trim();
+    const raw = (result.text || '').trim();
+    console.log('[voiceTask] Parsed via', result.tier, result.model,
+      `(${result.latencyMs}ms` + (result.fallback ? ', fallback' : '') + ')');
 
     let parsed;
     try {
       parsed = JSON.parse(raw);
     } catch (e) {
-      // Fallback: use raw transcript, auto-classify as do-first
       console.warn('[voiceTask] parseTranscript → invalid JSON, using fallback:', raw.substring(0, 60));
       return { title: capFirst(transcript), quadrant: 'do_first', fallback: true };
     }
@@ -133,10 +113,13 @@ async function parseTranscript(transcript) {
 
     return { title: capFirst(parsed.title), quadrant: parsed.quadrant, fallback: false };
   } catch (err) {
-    clearTimeout(timeout);
-    if (err.name === 'AbortError') throw new Error('voice:parse_timeout');
-    if (err.message && err.message.startsWith('voice:')) throw err;
-    throw new Error(`voice:parse_network:${err.message}`);
+    if (err instanceof ModelRouterError) {
+      console.error('[voiceTask] All tiers exhausted for parseTranscript:', err.tierErrors);
+      return { title: capFirst(transcript), quadrant: 'do_first', fallback: true };
+    }
+    // Network or unexpected errors — still fall back gracefully
+    console.error('[voiceTask] parseTranscript error:', err.message);
+    return { title: capFirst(transcript), quadrant: 'do_first', fallback: true };
   }
 }
 
