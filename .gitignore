@@ -1,6 +1,5 @@
 .DS_Store
-# Generated at build time by .github/workflows/deploy.yml — do NOT commit manually
-src/config.js
+# config.js is now safe to commit — keys live in localStorage, not in this file
 node_modules/
 package-lock.json
 test-results/
