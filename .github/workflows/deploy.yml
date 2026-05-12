@@ -1,22 +1,85 @@
 name: Deploy to GitHub Pages
+
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+
+# Minimum permissions required for Pages deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one deployment at a time; cancel in-progress on new push
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
-      - name: Inject API keys
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Secrets are passed as env vars (best practice — never interpolated
+      # directly into run scripts, so values stay masked in logs)
+      - name: Generate src/config.js from secrets
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          cat > src/config.js << EOF
-          window.XAI_API_KEY = '${{ secrets.XAI_API_KEY }}';
-          EOF
+          # Generate a minimal bootstrap that sets keys in localStorage,
+          # then loads the real config.js (which reads from localStorage).
+          # Keys are set via _tmSetApiKey() so they persist across reloads
+          # and never appear in the committed config.js.
+          cat > src/keys-ci.js << 'ENDKEYS'
+          (function() {
+            var k = '_tmSetApiKey';
+            if (!window[k]) window[k] = function(n, v) {
+              if (v === null) { localStorage.removeItem('tm_key:' + n); delete window[n]; }
+              else { localStorage.setItem('tm_key:' + n, v); window[n] = v; }
+            };
+          ENDKEYS
+          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "XAI_API_KEY"       "$XAI_API_KEY"
+          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "ANTHROPIC_API_KEY" "$ANTHROPIC_API_KEY"
+          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "OPENAI_API_KEY"    "$OPENAI_API_KEY"
+          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "SUPABASE_URL"      "$SUPABASE_URL"
+          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "SUPABASE_ANON_KEY" "$SUPABASE_ANON_KEY"
+          printf "})();\\n" >> src/keys-ci.js
+          # Inject script tag into index.html (before config.js)
+          sed -i '' 's|<script src="src/config.js">|<script src="src/keys-ci.js"></script>\\\n  <script src="src/config.js">|' index.html 2>/dev/null || \
+          sed -i  's|<script src="src/config.js">|<script src="src/keys-ci.js"></script>\\n  <script src="src/config.js">|' index.html
+
+      # Copy only the files the app actually needs — skip node_modules
+      # (Playwright dev dependency would push the artifact over 500 MB)
+      - name: Prepare deploy directory
+        run: |
+          mkdir -p _site/src
+          find . -maxdepth 1 -name "*.html" -exec cp {} _site/ \;
+          cp src/voiceTask.js _site/src/voiceTask.js
+          cp src/voice-recorder.js _site/src/voice-recorder.js
+          cp src/model-router.js _site/src/model-router.js
+          cp src/config.js   _site/src/config.js
+          cp src/keys-ci.js  _site/src/keys-ci.js
+          cp -r public _site/public
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: .
+        id: deployment
+        uses: actions/deploy-pages@v4

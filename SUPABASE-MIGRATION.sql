@@ -22,6 +22,7 @@ create table if not exists tasks (
   tags          text[],
   subtasks      jsonb default '[]'::jsonb,
   pinned        boolean default false,
+  deleted_at    timestamptz default null, -- soft-delete: app filters .is('deleted_at', null)
   created_at    timestamptz default now(),
   updated_at    timestamptz default now()
 );

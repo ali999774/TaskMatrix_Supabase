@@ -2941,7 +2941,7 @@
         return;
       }
       container.innerHTML = currentEditingTask.subtasks.map((subtask, index) =>
-        `<div class="subtask-item"><input type="checkbox" class="subtask-checkbox" ${subtask.completed ? 'checked' : ''} onchange="toggleSubtask(${index})"><span class="subtask-text ${subtask.completed ? 'completed' : ''}">${subtask.text}</span><button class="subtask-delete" onclick="deleteSubtask(${index})">×</button></div>`
+        `<div class="subtask-item"><input type="checkbox" class="subtask-checkbox" ${subtask.completed ? 'checked' : ''} onchange="toggleSubtask(${index})"><span class="subtask-text ${subtask.completed ? 'completed' : ''}">${escapeHTML(subtask.text)}</span><button class="subtask-delete" onclick="deleteSubtask(${index})">×</button></div>`
       ).join('');
     }
 
