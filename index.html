@@ -3,12 +3,18 @@
 
 <head>
   <script src="src/config.js"></script>
+  <script src="src/key-manager.js"></script>
+  <script src="src/model-router.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.js"></script>
-  <script src="src/config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <script src="src/voiceTask.js"></script>
+  <script src="src/voice-recorder.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TaskMatrix</title>
+  <link rel="manifest" href="/TaskMatrix_Supabase/public/manifest.json">
+  <meta name="theme-color" content="#6366f1">
   <link rel="icon"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
   <style>
@@ -616,6 +622,15 @@
       opacity: 0.8;
       transform: scale(1.01);
       transition: all 0.15s;
+    }
+
+    .sortable-ghost {
+      opacity: 0.4;
+      background-color: #f3f4f6;
+    }
+
+    .sortable-drag {
+      cursor: grabbing !important;
     }
 
     /* Archived section */
@@ -1770,20 +1785,6 @@
         width: 100%;
       }
     }
-    .voice-mic-btn { transition: all 0.15s; }
-    .voice-mic-btn.voice-recording { color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.3); border-radius: 8px; }
-    .voice-mic-btn.voice-processing { color: var(--text-muted); opacity: 0.6; }
-    .voice-mic-btn.voice-done { color: #16a34a; }
-    .voice-mic-btn.voice-error { color: #dc2626; }
-    @keyframes voiceNotePulse {
-      0%, 100% { box-shadow: 0 0 0 2px rgba(202,138,4,0.4); }
-      50%       { box-shadow: 0 0 0 5px rgba(202,138,4,0.15); }
-    }
-    .voice-note-btn { transition: all 0.15s; }
-    .voice-note-btn.vnote-recording { color: #ca8a04; animation: voiceNotePulse 0.9s ease-in-out infinite; border-radius: 8px; }
-    .voice-note-btn.vnote-processing { opacity: 0.6; }
-    .voice-note-btn.vnote-done { color: #16a34a; }
-    .voice-note-btn.vnote-error { color: #dc2626; }
   </style>
 </head>
 
@@ -1796,12 +1797,6 @@
       <div class="zen-logo">📊 TaskMatrix</div>
       <input type="text" id="quick-add-input" class="quick-add-input" placeholder="⚡ Quick add task (press Enter)..."
         onkeypress="handleQuickAdd(event)">
-      <button type="button" id="voice-mic-btn" class="zen-icon-btn voice-mic-btn" title="Hold to speak"
-        onmousedown="startVoiceRecording(event)" onmouseup="stopVoiceRecording(event)"
-        ontouchstart="startVoiceRecording(event)" ontouchend="stopVoiceRecording(event)">🎤</button>
-      <button type="button" id="voice-note-btn" class="zen-icon-btn voice-note-btn" title="Voice note"
-        onmousedown="startVoiceNoteRecording(event)" onmouseup="stopVoiceNoteRecording(event)"
-        ontouchstart="startVoiceNoteRecording(event)" ontouchend="stopVoiceNoteRecording(event)">📝</button>
       <div class="zen-actions">
         <button class="zen-icon-btn" onclick="toggleTheme()" title="Toggle Dark Mode" id="theme-toggle">🌙</button>
         <div id="sync-dot" class="status-indicator" title="Synced" style="cursor:default;"></div>
@@ -2120,8 +2115,7 @@
         <!-- Matrix -->
         <div class="card">
       <div class="matrix">
-        <div class="quadrant red" ondragover="allowDrop(event)" ondrop="drop(event, 'do-first')"
-          ondragenter="this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
+        <div class="quadrant red">
           <div class="quad-header red">
             <span>Do First 🔥</span>
             <div style="display:flex; align-items:center; gap:8px;">
@@ -2142,8 +2136,7 @@
           <div class="quad-body" id="tasks-do-first"></div>
         </div>
 
-        <div class="quadrant blue" ondragover="allowDrop(event)" ondrop="drop(event, 'schedule')"
-          ondragenter="this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
+        <div class="quadrant blue">
           <div class="quad-header blue">
             <span>Schedule 📅</span>
             <div style="display:flex; align-items:center; gap:8px;">
@@ -2164,8 +2157,7 @@
           <div class="quad-body" id="tasks-schedule"></div>
         </div>
 
-        <div class="quadrant yellow" ondragover="allowDrop(event)" ondrop="drop(event, 'delegate')"
-          ondragenter="this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
+        <div class="quadrant yellow">
           <div class="quad-header yellow">
             <span>Delegate 🤝</span>
             <div style="display:flex; align-items:center; gap:8px;">
@@ -2186,8 +2178,7 @@
           <div class="quad-body" id="tasks-delegate"></div>
         </div>
 
-        <div class="quadrant gray" ondragover="allowDrop(event)" ondrop="drop(event, 'eliminate')"
-          ondragenter="this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
+        <div class="quadrant gray">
           <div class="quad-header gray">
             <span>Eliminate 🗑️</span>
             <div style="display:flex; align-items:center; gap:8px;">
@@ -2303,22 +2294,6 @@
           <div class="form-group">
             <label class="form-label">Title</label>
             <input type="text" id="modal-title" class="form-input" placeholder="Task title">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Notes</label>
-            <div style="position:relative;">
-              <textarea id="modal-notes" class="form-textarea" placeholder="Add detailed notes..."
-                style="padding-right: 44px;"></textarea>
-              <button id="voice-btn" onclick="toggleVoice()" title="Voice dictation" style="
-                position:absolute; right:8px; bottom:8px;
-                width:32px; height:32px; border-radius:50%;
-                border:1px solid var(--border-input);
-                background:var(--bg-card); cursor:pointer;
-                display:flex; align-items:center; justify-content:center;
-                font-size:16px; color:var(--text-muted);
-                transition: all 0.2s;
-              ">🎤</button>
-            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Category</label>
@@ -2539,13 +2514,11 @@
       // Tracks the most-recent saveTasks() promise so quickAddMoveTo() can
       // await the handleQuickAdd INSERT before doing its own save — preventing
       // a duplicate INSERT when the task has no supabaseId yet.
-      let _pendingSaveTasksPromise = Promise.resolve();
+      let _pendingSaveTasksPromise = null;
       // FIX 2: retry state for failed saves
       let saveRetryCount = 0;
       let saveRetryTimer = null;
       const SAVE_RETRY_DELAYS = [15000, 30000, 60000];
-      // FIX 4: track deleted note supabaseIds so we don't nuke the whole table
-      let pendingNoteDeletes = [];
       // DEDUP FIX: guard against onAuthStateChange SIGNED_IN double-firing after
       // getSession() already completed the initial load on the same page lifecycle.
       let _initialLoadDone = false;
@@ -2765,16 +2738,17 @@
         box-shadow:0 10px 25px rgba(0,0,0,0.1); display:flex;
         align-items:center; gap:16px; font-size:14px; color:var(--danger);
       `
-        banner.innerHTML = `
-        <span>⚠ Session expired</span>
-        <button onclick="signInWithGoogle()"
-          style="background:var(--primary);color:white;border:none;
-          padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;">
-          Sign in again
-        </button>
-        <button onclick="document.getElementById('session-expired-banner').remove()"
-          style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:18px;">×</button>
-      `
+        const span = document.createElement('span');
+        span.textContent = '⚠ Session expired';
+        const signInBtn = document.createElement('button');
+        signInBtn.textContent = 'Sign in again';
+        signInBtn.onclick = signInWithGoogle;
+        signInBtn.style.cssText = 'background:var(--primary);color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;';
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.onclick = () => banner.remove();
+        closeBtn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:18px;';
+        banner.append(span, signInBtn, closeBtn);
         document.body.appendChild(banner)
       }
 
@@ -2814,230 +2788,102 @@
               // ── Task flush ──────────────────────────────────────────
               const pending = await db.tasks.where('pendingSync').equals(1).toArray()
 
+              // ── Pre-check: which server rows are soft-deleted? ──
+              // One query instead of N per-row checks.
+              const existingIds = pending
+                .map(r => JSON.parse(r.data))
+                .filter(t => t.supabaseId)
+                .map(t => t.supabaseId)
+              const serverDeletedIds = new Set()
+              if (existingIds.length > 0) {
+                const { data: deletedRows } = await supabaseClient
+                  .from('tasks')
+                  .select('id')
+                  .in('id', existingIds)
+                  .eq('user_id', currentUser.id)
+                  .not('deleted_at', 'is', null)
+                if (deletedRows) {
+                  deletedRows.forEach(r => serverDeletedIds.add(r.id))
+                }
+              }
+
+              const upsertPayload = []
+              const newFlushTasks = []
+
               for (const row of pending) {
-                try {
-                  const task = JSON.parse(row.data)
+                const task = JSON.parse(row.data)
 
-                  // skip rows that were deleted locally (deleted_at set)
-                  if (task.deleted_at) {
-                    try { await db.tasks.delete(row.localId) } catch (e) { }
-                    continue
-                  }
+                // skip rows that were deleted locally (deleted_at set)
+                if (task.deleted_at) {
+                  try { await db.tasks.delete(row.localId) } catch (e) { }
+                  continue
+                }
 
-                  // if task has a server row, check it hasn't been
-                  // soft-deleted on the server (e.g. deleted from another device offline)
-                  if (task.supabaseId && currentUser) {
-                    try {
-                      const { data: serverRow } = await supabaseClient
-                        .from('tasks')
-                        .select('deleted_at')
-                        .eq('id', task.supabaseId)
-                        .eq('user_id', currentUser.id)
-                        .maybeSingle()
-                      if (serverRow?.deleted_at) {
-                        try { await db.tasks.delete(row.localId) } catch (e) { }
-                        tasks = tasks.filter(t => t.id !== task.id)
-                        continue
-                      }
-                    } catch (checkErr) {
-                      console.warn(`[flush:${source}] server delete-check failed (proceeding with upsert):`, checkErr)
-                    }
-                  }
+                // skip rows whose server copy was soft-deleted
+                if (task.supabaseId && serverDeletedIds.has(task.supabaseId)) {
+                  try { await db.tasks.delete(row.localId) } catch (e) { }
+                  tasks = tasks.filter(t => t.id !== task.id)
+                  continue
+                }
 
-                  const upsertRow = {
-                    ...(task.supabaseId ? { id: task.supabaseId } : {}),
-                    user_id: currentUser.id,
-                    title: task.title,
-                    notes: task.notes || '',
-                    category: task.category || 'personal',
-                    importance: task.importance,
-                    urgency: task.urgency,
-                    status: task.status,
-                    due_date: task.dueDate || null,
-                    due_time: task.dueTime || null,
-                    estimated_duration: task.estimatedDuration || null,
-                    recurring: task.recurring || false,
-                    recur_frequency: task.recurFrequency || null,
-                    recur_interval: task.recurInterval || 1,
-                    recur_days: task.recurDays || [],
-                    tags: task.tags || [],
-                    subtasks: task.subtasks || [],
-                    pinned: task.pinned || false
-                  }
+                const payload = {
+                  ...(task.supabaseId ? { id: task.supabaseId } : {}),
+                  user_id: currentUser.id,
+                  title: task.title,
+                  notes: task.notes || '',
+                  category: task.category || 'personal',
+                  importance: task.importance,
+                  urgency: task.urgency,
+                  status: task.status,
+                  due_date: task.dueDate || null,
+                  due_time: task.dueTime || null,
+                  estimated_duration: task.estimatedDuration || null,
+                  recurring: task.recurring || false,
+                  recur_frequency: task.recurFrequency || null,
+                  recur_interval: task.recurInterval || 1,
+                  recur_days: task.recurDays || [],
+                  tags: task.tags || [],
+                  subtasks: task.subtasks || [],
+                  pinned: task.pinned || false,
+                  updated_at: new Date().toISOString()
+                }
 
-                  let result;
-                  if (task.supabaseId) {
-                    const { id: _excluded, ...updatePayload } = upsertRow;
-                    result = await supabaseClient
-                      .from('tasks')
-                      .update(updatePayload)
-                      .eq('id', task.supabaseId)
-                      .select();
-                  } else {
-                    result = await supabaseClient
-                      .from('tasks')
-                      .insert([upsertRow])
-                      .select();
-                  }
-
-                  const { data, error } = result;
-
-                  if (error) {
-                    // Row keeps pendingSync:1 — will retry on next flush
-                    console.error(`[flush:${source}] task FAILED (queued for retry): "${task.title}"`, error)
-                  } else {
-                    // Update supabaseId if this was a new task
-                    if (data?.[0]?.id && !task.supabaseId) {
-                      task.supabaseId = data[0].id;
-                      const memTask = tasks.find(t => t.id === task.id);
-                      if (memTask) memTask.supabaseId = data[0].id;
-                      await db.tasks.put({
-                        ...row,
-                        supabaseId: data[0].id,
-                        pendingSync: 0,
-                        data: JSON.stringify(task)
-                      })
-                    } else {
-                      await db.tasks.put({ ...row, pendingSync: 0 })
-                    }
-                  }
-                } catch (rowErr) {
-                  // Row keeps pendingSync:1 — will retry on next flush
-                  console.error(`[flush:${source}] task row error (queued for retry):`, rowErr)
+                upsertPayload.push(payload)
+                if (!task.supabaseId) {
+                  newFlushTasks.push(task)
                 }
               }
 
-              // ── Notes flush ─────────────────────────────────────────
-              const pendingNotes = await db.notes.where('pendingSync').equals(1).toArray();
-              const toUpdateNotes = [];
-              const toInsertNotes = [];
-              const noteRowsMap = new Map();
-
-              for (const noteRow of pendingNotes) {
-                try {
-                  const note = JSON.parse(noteRow.data);
-                  noteRowsMap.set(note.id, { row: noteRow, note });
-                  if (note.supabaseId) {
-                    const { error } = await supabaseClient
-                      .from('sticky_notes')
-                      .upsert({
-                        id: note.supabaseId,
-                        user_id: currentUser.id,
-                        title: note.title || '',
-                        content: note.content || '',
-                        color: note.color || 'yellow',
-                        position_x: note.x || 0,
-                        position_y: note.y || 0,
-                        pinned: note.pinned || false,
-                        updated_at: new Date().toISOString()
-                      }, { onConflict: 'id' })
-                    noteError = error
-                  } else {
-                    toInsertNotes.push({
-                      user_id: currentUser.id,
-                      title: note.title || '',
-                      content: note.content || '',
-                      color: note.color || 'yellow',
-                      position_x: note.x || 0,
-                      position_y: note.y || 0,
-                      pinned: note.pinned || false,
-                      created_at: note.createdAt || new Date().toISOString(),
-                      updated_at: new Date().toISOString(),
-                      _localId: note.id // temporary field for mapping back
-                    });
-                  }
-                } catch (e) {
-                  console.error(`[flush:${source}] failed to parse note row`, e);
-                }
-              }
-
-              async function processSequentialNote(payload, isInsert) {
-                const localId = payload._localId;
-                if (isInsert) delete payload._localId;
-
-                const query = isInsert
-                  ? supabaseClient.from('sticky_notes').insert(payload).select()
-                  : supabaseClient.from('sticky_notes').upsert(payload, { onConflict: 'id' });
-
-                const { data, error } = await query;
-                const noteInfo = noteRowsMap.get(localId) || Array.from(noteRowsMap.values()).find(info => info.note.supabaseId === payload.id);
-                if (!noteInfo) return;
-
+              // ── Single batch upsert (replaces per-row update/insert) ──
+              if (upsertPayload.length > 0) {
+                const { data, error } = await supabaseClient
+                  .from('tasks')
+                  .upsert(upsertPayload, { onConflict: 'id' })
+                  .select()
                 if (error) {
-                  console.error(`[flush:${source}] note FAILED (queued for retry): id=${noteInfo.note.id}`, error);
-                } else {
-                  if (isInsert && data?.[0]?.id) {
-                    noteInfo.note.supabaseId = data[0].id;
-                    const memNote = (typeof notes !== 'undefined' ? notes : []).find(n => n.id === noteInfo.note.id);
-                    if (memNote) memNote.supabaseId = data[0].id;
-                  }
-                  await db.notes.put({
-                    ...noteInfo.row,
-                    supabaseId: noteInfo.note.supabaseId || null,
-                    pendingSync: 0,
-                    data: JSON.stringify(noteInfo.note)
-                  });
-                }
-              }
-
-              if (toUpdateNotes.length > 0) {
-                try {
-                  const { error } = await supabaseClient.from('sticky_notes').upsert(toUpdateNotes, { onConflict: 'id' });
-                  if (error) throw error;
-                  for (const payload of toUpdateNotes) {
-                    const noteInfo = Array.from(noteRowsMap.values()).find(info => info.note.supabaseId === payload.id);
-                    if (noteInfo) {
-                      await db.notes.put({
-                        ...noteInfo.row,
-                        supabaseId: noteInfo.note.supabaseId || null,
-                        pendingSync: 0,
-                        data: JSON.stringify(noteInfo.note)
-                      });
+                  console.error(`[flush:${source}] batch upsert failed (rows keep pendingSync:1):`, error)
+                } else if (data && newFlushTasks.length > 0) {
+                  const startIdx = data.length - newFlushTasks.length
+                  for (let i = 0; i < newFlushTasks.length; i++) {
+                    const row = data[startIdx + i]
+                    if (row?.id) {
+                      newFlushTasks[i].supabaseId = row.id
+                      const memTask = tasks.find(t => t.id === newFlushTasks[i].id)
+                      if (memTask) memTask.supabaseId = row.id
                     }
                   }
-                } catch (batchErr) {
-                  console.warn(`[flush:${source}] notes batch update failed, falling back to sequential`, batchErr);
-                  for (const payload of toUpdateNotes) {
-                    await processSequentialNote(payload, false);
-                  }
                 }
               }
 
-              if (toInsertNotes.length > 0) {
-                try {
-                  const insertPayloads = toInsertNotes.map(n => { const { _localId, ...rest } = n; return rest; });
-                  const { data, error } = await supabaseClient.from('sticky_notes').insert(insertPayloads).select();
-                  if (error) throw error;
-
-                  // Map responses back. Since order might not be strictly guaranteed without matching a unique key,
-                  // we use title + content as fallback if _localId is stripped, but we can also match by order if length matches.
-                  if (data && data.length === toInsertNotes.length) {
-                    for (let i = 0; i < data.length; i++) {
-                      const serverRow = data[i];
-                      const localId = toInsertNotes[i]._localId;
-                      const noteInfo = noteRowsMap.get(localId);
-                      if (noteInfo) {
-                        noteInfo.note.supabaseId = serverRow.id;
-                        const memNote = (typeof notes !== 'undefined' ? notes : []).find(n => n.id === noteInfo.note.id);
-                        if (memNote) memNote.supabaseId = serverRow.id;
-                        await db.notes.put({
-                          ...noteInfo.row,
-                          supabaseId: serverRow.id,
-                          pendingSync: 0,
-                          data: JSON.stringify(noteInfo.note)
-                        });
-                      }
-                    }
-                  } else {
-                    throw new Error("Batch insert response count mismatch");
-                  }
-                } catch (batchErr) {
-                  console.warn(`[flush:${source}] notes batch insert failed, falling back to sequential`, batchErr);
-                  for (const payload of toInsertNotes) {
-                    await processSequentialNote(payload, true);
-                  }
-                }
+              // Bulk mark all pending rows as synced
+              if (pending.length > 0) {
+                await db.tasks.bulkPut(pending.map(r => ({
+                  ...r,
+                  pendingSync: 0,
+                  updatedAt: new Date().toISOString()
+                })))
               }
+
             } finally {
               localChangeInFlight = false
             }
@@ -3085,11 +2931,15 @@
           pinned: row.pinned,
           createdAt: row.created_at,
           modifiedAt: row.updated_at,
-          deleted_at: row.deleted_at || null
+          deleted_at: row.deleted_at || null,
+          position: row.position || 0
         }
       }
 
       // ── Supabase data operations ─────────────────────────────────
+      let _supabaseSyncInFlight = null;
+      let _supabaseSyncDirty = false;
+
       async function saveTasks() {
         _saveInFlightCount++;
         localChangeInFlight = true;
@@ -3098,8 +2948,6 @@
             console.warn('[saveTasks] No currentUser — skipping save');
             return;
           }
-          // BUG FIX 2: Do NOT set 'syncing' (orange dot) here. Dexie write below
-          // already persists data safely. Orange only appears if Supabase fails.
 
           // Write to Dexie first (always succeeds offline)
           try {
@@ -3114,8 +2962,36 @@
             console.warn('[saveTasks] Dexie write failed:', dexieErr)
           }
 
+          // Single-flight dedup: if a Supabase sync is already in progress,
+          // mark dirty and return the in-flight promise so all callers await
+          // the same operation. After completion, auto-retry if dirty.
+          if (_supabaseSyncInFlight) {
+            _supabaseSyncDirty = true;
+            return _supabaseSyncInFlight;
+          }
+
+          _supabaseSyncInFlight = _doSupabaseSync().finally(() => {
+            _supabaseSyncInFlight = null;
+          });
+          return _supabaseSyncInFlight;
+        } finally {
+          // BUG 1 FIX: delay releasing the guard so the Realtime INSERT echo
+          // (which arrives ~100-400ms after the Supabase response) is still blocked.
+          // Use clearTimeout so rapid consecutive saveTasks() calls reset the
+          // 500ms window rather than stacking timers — the first timer used to
+          // fire mid-flight for a second call, prematurely clearing the guard.
+          _saveInFlightCount--;
+          if (_saveInFlightCount === 0) {
+            clearTimeout(_localChangeInFlightTimer);
+            _localChangeInFlightTimer = setTimeout(() => { localChangeInFlight = false; }, 500);
+          }
+        }
+      }
+
+      async function _doSupabaseSync() {
+        do {
+          _supabaseSyncDirty = false;
           try {
-            // Fix 1: per-row upsert — no delete+insert
             const toInsert = tasks.filter(t => !t.supabaseId).map(t => ({
               user_id: currentUser.id,
               title: t.title,
@@ -3133,14 +3009,15 @@
               recur_days: t.recurDays || [],
               tags: t.tags || [],
               subtasks: t.subtasks || [],
-              pinned: t.pinned || false
+              pinned: t.pinned || false,
+              position: t.position || 0
             }));
 
             const toUpdate = tasks.filter(t => t.supabaseId).map(t => ({
               id: t.supabaseId,
               user_id: currentUser.id,
               title: t.title,
-              notes: t.notes || '',          // ← notes always included
+              notes: t.notes || '',
               category: t.category || 'personal',
               importance: t.importance,
               urgency: t.urgency,
@@ -3155,31 +3032,23 @@
               tags: t.tags || [],
               subtasks: t.subtasks || [],
               pinned: t.pinned || false,
-              updated_at: new Date().toISOString() // ← include timestamp so Supabase actually writes the row
+              position: t.position || 0,
+              updated_at: new Date().toISOString()
             }));
 
             let allData = [];
 
             if (toUpdate.length > 0) {
-              console.log('[saveTasks] upserting', toUpdate.length, 'task(s) — notes sample:', toUpdate[0]?.notes?.substring(0, 40));
-              const upsertPromises = toUpdate.map(t =>
-                supabaseClient
-                  .from('tasks')
-                  .upsert(t, { onConflict: 'id' })
-                  .select()
-              );
-              const results = await Promise.all(upsertPromises);
-              for (const { data, error } of results) {
-                if (error) {
-                  console.error('[saveTasks] upsert ERROR:', error.code, error.message, error.details);
-                  console.error('[DEBUG 4] full error object:', JSON.stringify(error));
-                  throw error;
-                }
-              } else {
-                if (data) allData.push(...data);
-              }
+              const { data, error } = await supabaseClient
+                .from('tasks')
+                .upsert(toUpdate, { onConflict: 'id' })
+                .select();
 
-              console.log('[DEBUG 4] upsert response — first row notes:', JSON.stringify(allData[0]?.notes));
+              if (error) {
+                console.error('[saveTasks] batch upsert ERROR:', error.code, error.message, error.details);
+                throw error;
+              }
+              if (data) allData.push(...data);
             }
 
             if (toInsert.length > 0) {
@@ -3191,31 +3060,21 @@
               if (data) allData.push(...data);
             }
 
-            if (allData.length > 0) {
-              // First pass: match rows that already have a supabaseId (upserts)
-              allData.forEach(row => {
-                const task = tasks.find(t => t.supabaseId === row.id);
-                if (task) task.supabaseId = row.id; // confirm (no-op but explicit)
-              });
-              // Second pass: match newly-INSERTed rows by array position.
-              // Supabase returns rows in the same order as the input array, so
-              // toInsert[i] corresponds to allData rows NOT already matched above.
-              // Using positional matching instead of title avoids creating duplicate
-              // supabaseId assignments when two tasks share the same title.
-              const insertedRows = allData.filter(row => !tasks.find(t => t.supabaseId === row.id));
-              toInsert.forEach((localTask, i) => {
-                const row = insertedRows[i];
-                if (!row) return;
-                const memTask = tasks.find(t => t.id === localTask.id);
-                if (memTask && !memTask.supabaseId) {
-                  memTask.supabaseId = row.id;
-                  localTask.supabaseId = row.id;
-                  console.log('[TaskMatrix] saveTasks → INSERT supabaseId assigned by position', { localId: localTask.id, title: row.title, supabaseId: row.id });
+            // ── Assign Supabase IDs to newly inserted tasks ──────
+            // Supabase .insert().select() returns rows in insertion order.
+            // Re-run the same filter to get local task objects in matching order.
+            if (toInsert.length > 0) {
+              const newLocalTasks = tasks.filter(t => !t.supabaseId);
+              // Insert results are the last N items in allData (insert runs after upsert)
+              const startIdx = allData.length - toInsert.length;
+              for (let i = 0; i < toInsert.length && i < newLocalTasks.length; i++) {
+                const row = allData[startIdx + i];
+                if (row && row.id) {
+                  newLocalTasks[i].supabaseId = row.id;
                 }
-              });
+              }
             }
 
-            // Mark as synced locally
             if (db) {
               await db.tasks.bulkPut(tasks.map(t => ({
                 localId: t.id,
@@ -3223,14 +3082,13 @@
                 pendingSync: 0,
                 updatedAt: new Date().toISOString(),
                 data: JSON.stringify(t)
-              })))
+              })));
             }
 
             setSyncState('synced');
-            saveRetryCount = 0; // reset retry counter on success
+            saveRetryCount = 0;
             clearTimeout(saveRetryTimer);
           } catch (err) {
-            // BUG FIX 2: Orange dot only on actual Supabase failure (not on write start)
             await handleSupabaseError(err, 'saveTasks');
             if (navigator.onLine && saveRetryCount < SAVE_RETRY_DELAYS.length) {
               const delay = SAVE_RETRY_DELAYS[saveRetryCount++];
@@ -3238,20 +3096,8 @@
               saveRetryTimer = setTimeout(() => { saveTasks(); }, delay);
             }
           }
-        } finally {
-          // BUG 1 FIX: delay releasing the guard so the Realtime INSERT echo
-          // (which arrives ~100-400ms after the Supabase response) is still blocked.
-          // Use clearTimeout so rapid consecutive saveTasks() calls reset the
-          // 500ms window rather than stacking timers — the first timer used to
-          // fire mid-flight for a second call, prematurely clearing the guard.
-          _saveInFlightCount--;
-          if (_saveInFlightCount === 0) {
-            clearTimeout(_localChangeInFlightTimer);
-            _localChangeInFlightTimer = setTimeout(() => { localChangeInFlight = false; }, 500);
-          }
-        }
+        } while (_supabaseSyncDirty);
       }
-
 
       // silent=true skips sync-dot state changes (used by Realtime handler to avoid
       // clearing the 800ms green-debounce timer that a concurrent save already started)
@@ -3351,214 +3197,6 @@
         }
       }
 
-      async function saveNotesToSupabase(notesArray) {
-        if (!currentUser) return;
-        // BUG FIX 4: Write to Dexie FIRST (data is safe locally regardless of network).
-        // Always mark pendingSync:1 here; clear it to 0 only after Supabase succeeds.
-        // Do NOT set orange dot before write — only on Supabase failure.
-        if (db) {
-          try {
-            await db.notes.clear();
-            if (notesArray.length > 0) {
-              await db.notes.bulkPut(notesArray.map(n => ({
-                localId: n.id,
-                supabaseId: n.supabaseId || null,
-                pendingSync: 1, // always 1 until Supabase confirms
-                updatedAt: new Date().toISOString(),
-                data: JSON.stringify(n)
-              })));
-            }
-          } catch (dexieErr) {
-            console.warn('[saveNotes] Dexie write failed:', dexieErr);
-          }
-        }
-
-        if (!navigator.onLine) {
-          setSyncState('offline');
-          return;
-        }
-
-        try {
-          // NEVER nuke the whole table. Delete only explicitly removed notes,
-          // then upsert/insert the rest individually.
-          if (pendingNoteDeletes.length > 0) {
-            const { error: delErr } = await supabaseClient
-              .from('sticky_notes')
-              .delete()
-              .in('id', pendingNoteDeletes);
-            if (delErr) console.warn('[saveNotes] targeted delete error:', delErr);
-            else pendingNoteDeletes = [];
-          }
-
-          if (notesArray.length > 0) {
-            const toInsert = notesArray.filter(n => !n.supabaseId);
-            const toUpdate = notesArray.filter(n => n.supabaseId);
-
-            if (toUpdate.length > 0) {
-              const upsertPromises = toUpdate.map(n =>
-                supabaseClient
-                  .from('sticky_notes')
-                  .upsert({
-                    id: n.supabaseId,
-                    user_id: currentUser.id,
-                    title: n.title || '',
-                    content: n.content || '',
-                    color: n.color || 'yellow',
-                    position_x: n.x || 0,
-                    position_y: n.y || 0,
-                    pinned: n.pinned || false,
-                    updated_at: new Date().toISOString()
-                  }, { onConflict: 'id' })
-              );
-              const results = await Promise.all(upsertPromises);
-              for (const { error } of results) {
-                // BUG 1 FIX: make Supabase note upsert failures visible in DevTools
-                if (error) {
-                  console.error('[saveNotes] Supabase upsert FAILED — notes remain in Dexie (pendingSync:1):', error);
-                  throw error;
-                }
-              }
-            }
-
-            if (toInsert.length > 0) {
-              const { data: inserted, error } = await supabaseClient
-                .from('sticky_notes')
-                .insert(toInsert.map(n => ({
-                  user_id: currentUser.id,
-                  title: n.title || '',
-                  content: n.content || '',
-                  color: n.color || 'yellow',
-                  position_x: n.x || 0,
-                  position_y: n.y || 0,
-                  pinned: n.pinned || false,
-                  created_at: n.createdAt || new Date().toISOString(),
-                  updated_at: new Date().toISOString()
-                })))
-                .select();
-              if (error) throw error;
-              // Backfill supabaseId and stable local id on newly saved notes
-              if (inserted) {
-                inserted.forEach((row, i) => {
-                  const match = toInsert[i];
-                  if (match) {
-                    match.supabaseId = row.id;
-                    match.id = row.id; // stable UUID id going forward
-                  }
-                });
-                // Refresh Dexie with now-stable IDs
-                if (db) {
-                  try {
-                    await db.notes.clear();
-                    await db.notes.bulkPut(notesArray.map(n => ({
-                      localId: n.id,
-                      supabaseId: n.supabaseId || null,
-                      pendingSync: 0,
-                      updatedAt: new Date().toISOString(),
-                      data: JSON.stringify(n)
-                    })));
-                  } catch (dexieErr) {
-                    console.warn('[saveNotes] Dexie stable-ID refresh failed:', dexieErr);
-                  }
-                }
-              }
-            }
-          }
-          // BUG FIX 4: Supabase succeeded — clear pendingSync in Dexie and keep dot green
-          if (db) {
-            try {
-              await db.notes.clear();
-              if (notesArray.length > 0) {
-                await db.notes.bulkPut(notesArray.map(n => ({
-                  localId: n.id,
-                  supabaseId: n.supabaseId || null,
-                  pendingSync: 0,
-                  updatedAt: new Date().toISOString(),
-                  data: JSON.stringify(n)
-                })));
-              }
-            } catch (dexieErr) {
-              console.warn('[saveNotes] Dexie sync-clear failed:', dexieErr);
-            }
-          }
-          setSyncState('synced');
-        } catch (err) {
-          // BUG FIX 4: Only go orange/red on actual Supabase failure.
-          // Dexie already has the note with pendingSync:1 — it will retry on reconnect.
-          console.error('Notes save error:', err);
-          setSyncState('error');
-        }
-      }
-
-      async function loadNotesFromSupabase() {
-        if (!currentUser) return;
-        try {
-          const { data, error } = await supabaseClient
-            .from('sticky_notes')
-            .select('*')
-            .eq('user_id', currentUser.id);
-          if (error) throw error;
-          notes = data.map(row => ({
-            id: row.id, // FIX 4b: stable Supabase UUID — no more random IDs per session
-            supabaseId: row.id,
-            title: row.title || '',
-            content: row.content || '',
-            color: row.color || 'yellow',
-            pinned: row.pinned || false,
-            x: row.position_x || 0,
-            y: row.position_y || 0,
-            createdAt: row.created_at,
-            modifiedAt: row.updated_at
-          }));
-
-          // Update local Dexie notes replica — merge strategy preserving pendingSync:1 notes
-          if (db) {
-            try {
-              // 1. Save any notes that haven't reached Supabase yet
-              const pending = await db.notes.filter(n => n.pendingSync === 1).toArray();
-              const pendingIds = new Set(pending.map(n => n.localId));
-
-              // 2. Clear and restore pending notes first so they are never lost
-              await db.notes.clear();
-              for (const p of pending) {
-                await db.notes.put(p);
-              }
-
-              // 3. Write server notes, skipping any id that has a pending local version
-              const serverRows = notes
-                .filter(n => !pendingIds.has(n.id))
-                .map(n => ({
-                  localId: n.id,
-                  supabaseId: n.supabaseId,
-                  pendingSync: 0,
-                  updatedAt: new Date().toISOString(),
-                  data: JSON.stringify(n)
-                }));
-              if (serverRows.length > 0) {
-                await db.notes.bulkPut(serverRows);
-              }
-            } catch (dexieErr) {
-              console.warn('[loadNotes] Dexie cache update failed:', dexieErr);
-            }
-          }
-
-        } catch (err) {
-          console.warn('[loadNotes] Supabase failed, loading from Dexie cache');
-          if (db) {
-            try {
-              const cachedNotes = await db.notes.toArray();
-              if (cachedNotes.length > 0) {
-                notes = cachedNotes.map(row => JSON.parse(row.data));
-                setSyncState('offline');
-                return;
-              }
-            } catch (dexieErr) {
-              console.warn('[loadNotes] Dexie read fallback failed:', dexieErr);
-            }
-          }
-          console.error('Notes load error:', err);
-        }
-      }
-
       // ── localStorage migration ───────────────────────────────────
       async function checkAndMigrateLocalStorage() {
         const stored = localStorage.getItem('tasks');
@@ -3629,10 +3267,8 @@
           if (db) {
             try {
               const cachedTasks = await db.tasks.toArray();
-              const cachedNotes = await db.notes.toArray();
-              if (cachedTasks.length > 0 || cachedNotes.length > 0) {
+              if (cachedTasks.length > 0) {
                 tasks = cachedTasks.map(r => JSON.parse(r.data));
-                notes = cachedNotes.map(r => JSON.parse(r.data));
                 hideAuthScreen();
                 render(); renderNotes(); renderPinnedNotes();
                 window.addEventListener('online', () => { location.reload(); }, { once: true });
@@ -3655,7 +3291,6 @@
             await checkAndMigrateLocalStorage();
             await flushPendingSync(); // flush pending Dexie changes before server overwrites local cache
             await loadTasksFromSupabase();
-            await loadNotesFromSupabase();
             _initialLoadDone = true; // DEDUP FIX: mark initial load complete
             render();
             renderNotes();
@@ -3666,10 +3301,8 @@
             // FIX 3: offline boot — load from Dexie cache if no session available
             try {
               const cachedTasks = await db.tasks.toArray();
-              const cachedNotes = await db.notes.toArray();
-              if (cachedTasks.length > 0 || cachedNotes.length > 0) {
+              if (cachedTasks.length > 0) {
                 tasks = cachedTasks.map(r => JSON.parse(r.data));
-                notes = cachedNotes.map(r => JSON.parse(r.data));
                 hideAuthScreen();
                 render();
                 renderNotes();
@@ -3690,10 +3323,8 @@
           if (!navigator.onLine && db) {
             try {
               const cachedTasks = await db.tasks.toArray();
-              const cachedNotes = await db.notes.toArray();
-              if (cachedTasks.length > 0 || cachedNotes.length > 0) {
+              if (cachedTasks.length > 0) {
                 tasks = cachedTasks.map(r => JSON.parse(r.data));
-                notes = cachedNotes.map(r => JSON.parse(r.data));
                 hideAuthScreen();
                 render();
                 renderNotes();
@@ -3723,7 +3354,6 @@
             if (savedStats) userStats = JSON.parse(savedStats);
             await checkAndMigrateLocalStorage();
             await loadTasksFromSupabase();
-            await loadNotesFromSupabase();
             _initialLoadDone = true;
             render();
             renderNotes();
@@ -3740,9 +3370,66 @@
       }
 
       function saveStats() { localStorage.setItem('userStats', JSON.stringify(userStats)); }
-      // saveNotes proxies to Supabase; used wherever saveNotes() is called
-      function saveNotes() { saveNotesToSupabase(notes); }
+      function saveNotes() {}
       window._tmSaveNotes = saveNotes;
+
+      // ── Voice bridge: exposed for voice-recorder.js ──────────
+      window._tmAddVoiceTask = function(voiceResult) {
+        var qMap = {
+          'do-first':  { importance: 5, urgency: 5 },
+          'schedule':  { importance: 5, urgency: 2 },
+          'delegate':  { importance: 2, urgency: 5 },
+          'eliminate': { importance: 2, urgency: 2 }
+        };
+        var q = qMap[voiceResult.quadrant] || { importance: 5, urgency: 5 };
+        var newTask = {
+          id: Date.now(),
+          title: voiceResult.title,
+          category: activeContext === 'all' ? 'personal' : (activeContext || 'personal'),
+          status: 'todo',
+          dueDate: voiceResult.due_date || null,
+          importance: q.importance,
+          urgency: q.urgency,
+          notes: '',
+          tags: [],
+          subtasks: [],
+          created_via: 'voice',
+          createdAt: new Date().toISOString()
+        };
+        tasks.unshift(newTask);
+        saveTasks();
+        renderBoard();
+        if (typeof updatePWAStats === 'function') updatePWAStats();
+      };
+
+      // ── Voice bridge: exposed for voice-recorder.js ──────────
+      window._tmAddVoiceTask = function(voiceResult) {
+        var qMap = {
+          'do-first':  { importance: 5, urgency: 5 },
+          'schedule':  { importance: 5, urgency: 2 },
+          'delegate':  { importance: 2, urgency: 5 },
+          'eliminate': { importance: 2, urgency: 2 }
+        };
+        var q = qMap[voiceResult.quadrant] || { importance: 5, urgency: 5 };
+        var newTask = {
+          id: Date.now(),
+          title: voiceResult.title,
+          category: activeContext === 'all' ? 'personal' : (activeContext || 'personal'),
+          status: 'todo',
+          dueDate: voiceResult.due_date || null,
+          importance: q.importance,
+          urgency: q.urgency,
+          notes: '',
+          tags: [],
+          subtasks: [],
+          created_via: 'voice',
+          createdAt: new Date().toISOString()
+        };
+        tasks.unshift(newTask);
+        saveTasks();
+        renderBoard();
+        if (typeof updatePWAStats === 'function') updatePWAStats();
+      };
 
       function getQuad(imp, urg) {
         if (urg >= 4 && imp >= 4) return 'do-first';
@@ -3835,167 +3522,25 @@
         }
       }
 
-      // ── Voice-to-task ────────────────────────────────────────────
-      let _voiceMediaRecorder = null;
-      let _voiceAudioChunks = [];
-      let _voiceMimeType = 'audio/webm';
-
-      const _voiceBtnStates = {
-        idle:       { text: '🎤', title: 'Hold to speak',   cls: '',                 disabled: false },
-        recording:  { text: '🔴', title: 'Release to send', cls: 'voice-recording',  disabled: false },
-        processing: { text: '⏳', title: 'Processing...',   cls: 'voice-processing', disabled: true  },
-        done:       { text: '✓',  title: 'Task added ✓',    cls: 'voice-done',       disabled: false },
-        error:      { text: '⚠️', title: 'Try again',       cls: 'voice-error',      disabled: false }
-      };
-
-      function setVoiceBtnState(state) {
-        const btn = document.getElementById('voice-mic-btn');
-        if (!btn) return;
-        const s = _voiceBtnStates[state] || _voiceBtnStates.idle;
-        btn.textContent = s.text;
-        btn.title = s.title;
-        btn.disabled = s.disabled;
-        btn.className = 'zen-icon-btn voice-mic-btn' + (s.cls ? ' ' + s.cls : '');
-        if (state === 'done' || state === 'error') {
-          setTimeout(() => setVoiceBtnState('idle'), 2000);
-        }
-      }
-
-      async function startVoiceRecording(e) {
-        e.preventDefault();
-        if (_voiceMediaRecorder && _voiceMediaRecorder.state === 'recording') return;
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const mimeType = 'audio/mp4';
-          _voiceMimeType = mimeType;
-          _voiceAudioChunks = [];
-          _voiceMediaRecorder = new MediaRecorder(stream, { mimeType });
-          _voiceMediaRecorder._mimeType = mimeType;
-          _voiceMediaRecorder.ondataavailable = ev => _voiceAudioChunks.push(ev.data);
-          _voiceMediaRecorder.start();
-          setVoiceBtnState('recording');
-        } catch (err) {
-          console.error('[voiceTask] mic access failed:', err);
-          setVoiceBtnState('error');
-        }
-      }
-
-      async function stopVoiceRecording(e) {
-        e.preventDefault();
-        if (!_voiceMediaRecorder || _voiceMediaRecorder.state !== 'recording') return;
-        setVoiceBtnState('processing');
-        _voiceMediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(_voiceAudioChunks, { type: _voiceMimeType });
-          _voiceMediaRecorder.stream.getTracks().forEach(t => t.stop());
-          _voiceMediaRecorder = null;
-          try {
-            const voiceResult = await handleVoiceTask(audioBlob);
-            await addVoiceTask(voiceResult);
-            setVoiceBtnState('done');
-          } catch (err) {
-            console.error('[voiceTask] pipeline failed:', err);
-            setVoiceBtnState('error');
-          }
-        };
-        _voiceMediaRecorder.stop();
-      }
-
-      // ── Voice-to-note ────────────────────────────────────────────
-      let _voiceNoteMediaRecorder = null;
-      let _voiceNoteAudioChunks = [];
-      let _voiceNoteMimeType = 'audio/webm';
-
-      const _voiceNoteBtnStates = {
-        idle:       { text: '📝', title: 'Voice note',       cls: '',               disabled: false },
-        recording:  { text: '🔴', title: 'Release to save',  cls: 'vnote-recording', disabled: false },
-        processing: { text: '⏳', title: 'Saving note...',   cls: 'vnote-processing',disabled: true  },
-        done:       { text: '✓',  title: 'Note saved ✓',     cls: 'vnote-done',      disabled: false },
-        error:      { text: '⚠️', title: 'Try again',        cls: 'vnote-error',     disabled: false }
-      };
-
-      function setVoiceNoteBtnState(state) {
-        const btn = document.getElementById('voice-note-btn');
-        if (!btn) return;
-        const s = _voiceNoteBtnStates[state] || _voiceNoteBtnStates.idle;
-        btn.textContent = s.text;
-        btn.title = s.title;
-        btn.disabled = s.disabled;
-        btn.className = 'zen-icon-btn voice-note-btn' + (s.cls ? ' ' + s.cls : '');
-        if (state === 'done' || state === 'error') {
-          setTimeout(() => setVoiceNoteBtnState('idle'), 2000);
-        }
-      }
-
-      async function startVoiceNoteRecording(e) {
-        e.preventDefault();
-        if (_voiceNoteMediaRecorder && _voiceNoteMediaRecorder.state === 'recording') return;
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const mimeType = 'audio/mp4';
-          _voiceNoteMimeType = mimeType;
-          _voiceNoteAudioChunks = [];
-          _voiceNoteMediaRecorder = new MediaRecorder(stream, { mimeType });
-          _voiceNoteMediaRecorder._mimeType = mimeType;
-          _voiceNoteMediaRecorder.ondataavailable = ev => _voiceNoteAudioChunks.push(ev.data);
-          _voiceNoteMediaRecorder.start();
-          setVoiceNoteBtnState('recording');
-        } catch (err) {
-          console.error('[voiceNote] mic access failed:', err);
-          setVoiceNoteBtnState('error');
-        }
-      }
-
-      async function stopVoiceNoteRecording(e) {
-        e.preventDefault();
-        if (!_voiceNoteMediaRecorder || _voiceNoteMediaRecorder.state !== 'recording') return;
-        setVoiceNoteBtnState('processing');
-        _voiceNoteMediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(_voiceNoteAudioChunks, { type: _voiceNoteMimeType });
-          _voiceNoteMediaRecorder.stream.getTracks().forEach(t => t.stop());
-          _voiceNoteMediaRecorder = null;
-          try {
-            await transcribeAndSaveNote(audioBlob);
-            setVoiceNoteBtnState('done');
-          } catch (err) {
-            console.error('[voiceNote] pipeline failed:', err);
-            setVoiceNoteBtnState('error');
-          }
-        };
-        _voiceNoteMediaRecorder.stop();
-      }
-
-      async function addVoiceTask(voiceResult) {
-        const quadrantMap = {
-          'do-first': { importance: 5, urgency: 5 },
-          'schedule':  { importance: 5, urgency: 2 },
-          'delegate':  { importance: 2, urgency: 5 },
-          'eliminate': { importance: 2, urgency: 2 }
-        };
-        const q = quadrantMap[voiceResult.quadrant] || { importance: 5, urgency: 5 };
-        const newTaskCategory = activeContext === 'all' ? 'personal' : activeContext;
-        const newTask = {
-          id: Date.now(),
-          title: voiceResult.title,
-          category: newTaskCategory,
-          status: 'todo',
-          dueDate: voiceResult.due_date || null,
-          importance: q.importance,
-          urgency: q.urgency,
-          notes: '',
-          tags: [],
-          subtasks: [],
-          pinned: false,
-          createdAt: new Date().toISOString(),
-          recurring: false,
-          recurFrequency: '',
-          recurInterval: 1,
-          recurDays: []
-        };
-        tasks.push(newTask);
-        render();
-        updateStatsDisplay();
-        _pendingSaveTasksPromise = saveTasks();
-        await _pendingSaveTasksPromise;
+      // ── Toast helper (non-blocking user feedback) ────────────────
+      function showToast(message, durationMs) {
+        durationMs = durationMs || 3000;
+        const existing = document.querySelector('.voice-toast');
+        if (existing) existing.remove();
+        const toast = document.createElement('div');
+        toast.className = 'voice-toast';
+        toast.textContent = message;
+        toast.style.cssText = `
+          position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+          background:var(--bg-glass); border:1px solid var(--border-color);
+          border-radius:10px; padding:10px 20px; z-index:600;
+          font-size:14px; color:var(--text-primary);
+          box-shadow:0 8px 24px rgba(0,0,0,0.12);
+          backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; }, durationMs - 300);
+        setTimeout(() => toast.remove(), durationMs);
       }
 
       function toggleMenu(event) {
@@ -4251,10 +3796,6 @@
       function deleteCurrentNote() {
         if (!currentEditingNote) return;
         if (confirm('Delete this note?')) {
-          // FIX 4: queue supabaseId for targeted deletion — don't nuke whole table
-          if (currentEditingNote.supabaseId) {
-            pendingNoteDeletes.push(currentEditingNote.supabaseId);
-          }
           notes = notes.filter(n => n.id !== currentEditingNote.id);
           saveNotes();
           renderNotes();
@@ -4657,6 +4198,9 @@
         sorted.sort((a, b) => {
           if (a.pinned && !b.pinned) return -1;
           if (!a.pinned && b.pinned) return 1;
+          if (mode === 'manual') {
+            return (a.position || 0) - (b.position || 0);
+          }
           return 0;
         });
         if (mode === 'date') {
@@ -4879,7 +4423,7 @@
                 </div>`
                 : '';
               const taskJson = JSON.stringify(task).replace(/"/g, '&quot;');
-              return `<div class="task ${escapeHTML(task.category)} ${dueClass} ${pinnedClass}" draggable="true" ondragstart="drag(event, ${taskJson})" ondragend="dragEnd()" onclick="handleTaskInfoClick(event, ${task.id})" ontouchstart="handleTaskTouchStart(event, ${task.id})" ontouchend="handleTaskTouchEnd(event, ${task.id})">
+              return `<div class="task ${escapeHTML(task.category)} ${dueClass} ${pinnedClass}" data-id="${task.id}" onclick="handleTaskInfoClick(event, ${task.id})" ontouchstart="handleTaskTouchStart(event, ${task.id})" ontouchend="handleTaskTouchEnd(event, ${task.id})">
               <div class="task-content">
                 <button class="icon-btn" onclick="event.stopPropagation(); toggleTaskStatus(${task.id})" style="color:${statusColor}; font-size:20px;">${statusIcon}</button>
                 <div class="task-info">
@@ -4910,6 +4454,110 @@
         updateStatsDisplay();
         renderTodayStrip();
         if (typeof renderArchived === 'function') renderArchived(); // Phase 2A
+
+        initSortable();
+      }
+
+      async function handleSortableEnd(evt) {
+        const itemEl = evt.item;
+        const taskIdStr = itemEl.getAttribute('data-id');
+        if (!taskIdStr) return;
+        const taskId = parseFloat(taskIdStr);
+
+        const toContainer = evt.to; // The new container
+        const toQuadId = toContainer.id; // e.g. "tasks-do-first"
+        let quad = toQuadId.replace('tasks-', '');
+
+        let imp = 3, urg = 3;
+        if (quad === 'do-first') { imp = 5; urg = 5; }
+        else if (quad === 'schedule') { imp = 5; urg = 2; }
+        else if (quad === 'delegate') { imp = 2; urg = 5; }
+        else if (quad === 'eliminate') { imp = 2; urg = 2; }
+
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        // Update importance and urgency based on the new quadrant
+        task.importance = imp;
+        task.urgency = urg;
+
+        // Update positions for all items in the new quadrant
+        const children = Array.from(toContainer.children);
+        children.forEach((child, index) => {
+          const childIdStr = child.getAttribute('data-id');
+          if (childIdStr) {
+            const childId = parseFloat(childIdStr);
+            const childTask = tasks.find(t => t.id === childId);
+            if (childTask) {
+              childTask.position = index;
+            }
+          }
+        });
+
+        // Save tasks (batch-upsert or local)
+        await saveTasks();
+
+        // Update counts without full re-render to avoid visual jump, but standard sort requires full render if switching mode.
+        // For drag-drop manual sort, just set the mode to manual and re-render.
+        if (sortModes[quad] !== 'manual') {
+          sortModes[quad] = 'manual';
+          // Update UI sort dropdown
+          const menu = document.getElementById('sort-menu-' + quad);
+          if (menu) {
+            const items = menu.querySelectorAll('.sort-dropdown-item');
+            items.forEach(item => {
+              item.classList.remove('active');
+              if (item.onclick && item.onclick.toString().includes("'manual'")) {
+                item.classList.add('active');
+              }
+            });
+          }
+          render();
+        } else {
+           // If already in manual sort, we update the counts
+           const countId = quad === 'do-first' ? 'count-first' : 'count-' + quad;
+           const count = document.getElementById(countId);
+           if (count) {
+              const activeTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'archived');
+              const quadTasks = activeTasks.filter(t => getQuad(t.importance, t.urgency) === quad);
+              count.textContent = quadTasks.length;
+           }
+
+           if (evt.from !== evt.to) {
+               // Update from quadrant count
+               const fromQuad = evt.from.id.replace('tasks-', '');
+               const fromCountId = fromQuad === 'do-first' ? 'count-first' : 'count-' + fromQuad;
+               const fromCount = document.getElementById(fromCountId);
+               if (fromCount) {
+                  const activeTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'archived');
+                  const fromQuadTasks = activeTasks.filter(t => getQuad(t.importance, t.urgency) === fromQuad);
+                  fromCount.textContent = fromQuadTasks.length;
+               }
+           }
+        }
+      }
+
+      let sortableInstances = [];
+      function initSortable() {
+        // Destroy existing instances to avoid memory leaks or duplicate handlers
+        sortableInstances.forEach(instance => instance.destroy());
+        sortableInstances = [];
+
+        ['do-first', 'schedule', 'delegate', 'eliminate'].forEach(quad => {
+          const container = document.getElementById('tasks-' + quad);
+          if (!container) return;
+
+          const instance = Sortable.create(container, {
+            group: 'shared',
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            dragClass: 'sortable-drag',
+            delay: 200,
+            delayOnTouchOnly: true,
+            onEnd: handleSortableEnd
+          });
+          sortableInstances.push(instance);
+        });
       }
 
       // ── Fix 1: Inline date picker functions ─────────────────────
@@ -5091,7 +4739,6 @@
 
         document.getElementById('modal-main-title').textContent = 'Edit Task';
         document.getElementById('modal-title').value = task.title;
-        document.getElementById('modal-notes').value = task.notes || '';
         document.getElementById('modal-category').value = task.category;
         document.getElementById('modal-date').value = task.dueDate || '';
         document.getElementById('modal-time').value = task.dueTime || '';
@@ -5129,81 +4776,7 @@
         _modalOpenedAt = Date.now();
       }
 
-      let recognition = null;
-      let isListening = false;
-
-      function toggleVoice() {
-        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-          alert('Voice dictation is not supported in this browser. Try Chrome on desktop or Safari on iPhone.');
-          return;
-        }
-
-        if (isListening) {
-          stopVoice();
-          return;
-        }
-
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-        recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = 'en-US';
-
-        recognition.onstart = () => {
-          isListening = true;
-          const btn = document.getElementById('voice-btn');
-          if (btn) {
-            btn.textContent = '⏹';
-            btn.style.color = 'var(--danger)';
-            btn.style.borderColor = 'var(--danger)';
-            btn.style.background = 'var(--danger-bg)';
-          }
-        };
-
-        recognition.onresult = (event) => {
-          const transcript = event.results[0][0].transcript;
-          const notesField = document.getElementById('modal-notes');
-          if (notesField) {
-            const current = notesField.value;
-            notesField.value = current
-              ? current + (current.endsWith(' ') ? '' : ' ') + transcript
-              : transcript;
-          }
-        };
-
-        recognition.onerror = (event) => {
-          console.error('[voice] error:', event.error);
-          stopVoice();
-          if (event.error === 'not-allowed') {
-            alert('Microphone access denied. Please allow microphone access in your browser settings.');
-          }
-        };
-
-        recognition.onend = () => {
-          stopVoice();
-        };
-
-        recognition.start();
-      }
-
-      function stopVoice() {
-        isListening = false;
-        if (recognition) {
-          try { recognition.stop(); } catch { }
-          recognition = null;
-        }
-        const btn = document.getElementById('voice-btn');
-        if (btn) {
-          btn.textContent = '🎤';
-          btn.style.color = 'var(--text-muted)';
-          btn.style.borderColor = 'var(--border-input)';
-          btn.style.background = 'var(--bg-card)';
-        }
-      }
-
       function closeTaskModal() {
-        stopVoice();
         document.getElementById('task-modal').classList.remove('active');
         document.body.style.overflow = 'auto';
         currentEditingTask = null;
@@ -5244,7 +4817,7 @@
 
         const taskData = {
           title: title,
-          notes: document.getElementById('modal-notes').value,
+          notes: currentEditingTask ? (currentEditingTask.notes || '') : '',
           category: document.getElementById('modal-category').value,
           dueDate: document.getElementById('modal-date').value,
           dueTime: document.getElementById('modal-time').value,
@@ -5405,13 +4978,23 @@
           if (archivedVisible) { sectionEl.style.display = 'none'; archivedVisible = false; }
           return;
         }
-        listEl.innerHTML = archived.map(task => `
-        <div class="archived-task-row">
-          <span class="archived-title">${escapeHTML(task.title)}</span>
-          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${escapeHTML(task.dueDate || '')}</span>
-          <button class="restore-btn" onclick="restoreTask(${task.id})">Restore</button>
-        </div>
-      `).join('');
+        listEl.innerHTML = '';
+      archived.forEach(task => {
+        const row = document.createElement('div');
+        row.className = 'archived-task-row';
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'archived-title';
+        titleSpan.textContent = task.title;
+        const dateSpan = document.createElement('span');
+        dateSpan.style.cssText = 'font-size:11px;color:var(--text-muted);white-space:nowrap;';
+        dateSpan.textContent = task.dueDate || '';
+        const restoreBtn = document.createElement('button');
+        restoreBtn.className = 'restore-btn';
+        restoreBtn.textContent = 'Restore';
+        restoreBtn.onclick = () => restoreTask(task.id);
+        row.append(titleSpan, dateSpan, restoreBtn);
+        listEl.appendChild(row);
+      });
       }
 
       function showArchivedSection() {
@@ -5435,6 +5018,7 @@
       let _keepaliveInterval = null;
 
       function startKeepalive() {
+        if (navigator.connection?.saveData) return; // skip on metered connections
         if (_keepaliveInterval) clearInterval(_keepaliveInterval);
         _keepaliveInterval = setInterval(async () => {
           if (!supabaseClient || !navigator.onLine) return;
@@ -5450,11 +5034,8 @@
 
       // Realtime state and channels
       let _tasksChannelReady = false;
-      let _notesChannelReady = false;
       let _tasksRetryTimer = null;
-      let _notesRetryTimer = null;
       let _tasksChannel = null;
-      let _notesChannel = null;
 
       function setupTasksRealtime(userId) {
         _tasksChannel = supabaseClient
@@ -5499,71 +5080,16 @@
                 flushPendingSync('realtime-tasks')
               }
               _tasksChannelReady = true
-              setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady)
+              setSyncRealtimeConnected(_tasksChannelReady)
               // BUG FIX 3: Start keepalive after first successful subscription
               startKeepalive();
             } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-              // BUG FIX 3: Retry once after 2 s before marking as disconnected
+              // Retry: recreate channel to avoid accumulating duplicate handlers
               console.warn('[realtime] tasks channel ' + status + ' — scheduling retry')
               clearTimeout(_tasksRetryTimer);
               _tasksRetryTimer = setTimeout(() => {
-                const state = _tasksChannel.state;
-                if (state !== 'joined' && state !== 'joining') {
-                  _tasksChannel.subscribe((retryStatus) => {
-                    if (retryStatus === 'SUBSCRIBED') {
-                      _tasksChannelReady = true;
-                      setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady);
-                      startKeepalive();
-                    } else if (retryStatus === 'CLOSED' || retryStatus === 'CHANNEL_ERROR') {
-                      _tasksChannelReady = false;
-                      setSyncRealtimeConnected(false);
-                    }
-                  });
-                }
-              }, 2000);
-            }
-          });
-      }
-
-      function setupNotesRealtime(userId) {
-        _notesChannel = supabaseClient
-          .channel('notes-changes')
-          .on('postgres_changes',
-            {
-              event: '*', schema: 'public', table: 'sticky_notes',
-              filter: `user_id=eq.${userId}`
-            },
-            (payload) => {
-              clearTimeout(setupRealtime._notesTimer);
-              setupRealtime._notesTimer = setTimeout(() => {
-                loadNotesFromSupabase().then(() => renderNotes());
-              }, 500);
-            }
-          )
-          .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-              if (_notesChannelReady) {
-                flushPendingSync('realtime-notes')
-              }
-              _notesChannelReady = true
-              setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady)
-            } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-              // BUG FIX 3: Retry once after 2 s before marking as disconnected
-              console.warn('[realtime] notes channel ' + status + ' — scheduling retry')
-              clearTimeout(_notesRetryTimer);
-              _notesRetryTimer = setTimeout(() => {
-                const state = _notesChannel.state;
-                if (state !== 'joined' && state !== 'joining') {
-                  _notesChannel.subscribe((retryStatus) => {
-                    if (retryStatus === 'SUBSCRIBED') {
-                      _notesChannelReady = true;
-                      setSyncRealtimeConnected(_tasksChannelReady && _notesChannelReady);
-                    } else if (retryStatus === 'CLOSED' || retryStatus === 'CHANNEL_ERROR') {
-                      _notesChannelReady = false;
-                      setSyncRealtimeConnected(false);
-                    }
-                  });
-                }
+                _tasksChannel?.unsubscribe?.();
+                setupTasksRealtime(userId);
               }, 2000);
             }
           });
@@ -5611,12 +5137,6 @@
                 _tasksChannel.unsubscribe().then(() => _tasksChannel.subscribe());
               }
             }
-            if (_notesChannel) {
-              const notesState = _notesChannel.state;
-              if (notesState !== 'joined' && notesState !== 'joining') {
-                _notesChannel.unsubscribe().then(() => _notesChannel.subscribe());
-              }
-            }
           }
         });
       }
@@ -5628,7 +5148,6 @@
         _realtimeInitialized = true;
 
         setupTasksRealtime(userId);
-        setupNotesRealtime(userId);
         setupRealtimeVisibility();
       }
 
@@ -5911,7 +5430,6 @@
         Sign in with Google
       </button>
     </div>
-    <script src="src/voiceTask.js"></script>
 
 </body>
 
