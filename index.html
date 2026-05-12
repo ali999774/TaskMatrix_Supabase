@@ -2788,97 +2788,100 @@
               // ── Task flush ──────────────────────────────────────────
               const pending = await db.tasks.where('pendingSync').equals(1).toArray()
 
-              for (const row of pending) {
-                try {
-                  const task = JSON.parse(row.data)
-
-                  // skip rows that were deleted locally (deleted_at set)
-                  if (task.deleted_at) {
-                    try { await db.tasks.delete(row.localId) } catch (e) { }
-                    continue
-                  }
-
-                  // if task has a server row, check it hasn't been
-                  // soft-deleted on the server (e.g. deleted from another device offline)
-                  if (task.supabaseId && currentUser) {
-                    try {
-                      const { data: serverRow } = await supabaseClient
-                        .from('tasks')
-                        .select('deleted_at')
-                        .eq('id', task.supabaseId)
-                        .eq('user_id', currentUser.id)
-                        .maybeSingle()
-                      if (serverRow?.deleted_at) {
-                        try { await db.tasks.delete(row.localId) } catch (e) { }
-                        tasks = tasks.filter(t => t.id !== task.id)
-                        continue
-                      }
-                    } catch (checkErr) {
-                      console.warn(`[flush:${source}] server delete-check failed (proceeding with upsert):`, checkErr)
-                    }
-                  }
-
-                  const upsertRow = {
-                    ...(task.supabaseId ? { id: task.supabaseId } : {}),
-                    user_id: currentUser.id,
-                    title: task.title,
-                    notes: task.notes || '',
-                    category: task.category || 'personal',
-                    importance: task.importance,
-                    urgency: task.urgency,
-                    status: task.status,
-                    due_date: task.dueDate || null,
-                    due_time: task.dueTime || null,
-                    estimated_duration: task.estimatedDuration || null,
-                    recurring: task.recurring || false,
-                    recur_frequency: task.recurFrequency || null,
-                    recur_interval: task.recurInterval || 1,
-                    recur_days: task.recurDays || [],
-                    tags: task.tags || [],
-                    subtasks: task.subtasks || [],
-                    pinned: task.pinned || false
-                  }
-
-                  let result;
-                  if (task.supabaseId) {
-                    const { id: _excluded, ...updatePayload } = upsertRow;
-                    result = await supabaseClient
-                      .from('tasks')
-                      .update(updatePayload)
-                      .eq('id', task.supabaseId)
-                      .select();
-                  } else {
-                    result = await supabaseClient
-                      .from('tasks')
-                      .insert([upsertRow])
-                      .select();
-                  }
-
-                  const { data, error } = result;
-
-                  if (error) {
-                    // Row keeps pendingSync:1 — will retry on next flush
-                    console.error(`[flush:${source}] task FAILED (queued for retry): "${task.title}"`, error)
-                  } else {
-                    // Update supabaseId if this was a new task
-                    if (data?.[0]?.id && !task.supabaseId) {
-                      task.supabaseId = data[0].id;
-                      const memTask = tasks.find(t => t.id === task.id);
-                      if (memTask) memTask.supabaseId = data[0].id;
-                      await db.tasks.put({
-                        ...row,
-                        supabaseId: data[0].id,
-                        pendingSync: 0,
-                        data: JSON.stringify(task)
-                      })
-                    } else {
-                      await db.tasks.put({ ...row, pendingSync: 0 })
-                    }
-                  }
-                } catch (rowErr) {
-                  // Row keeps pendingSync:1 — will retry on next flush
-                  console.error(`[flush:${source}] task row error (queued for retry):`, rowErr)
+              // ── Pre-check: which server rows are soft-deleted? ──
+              // One query instead of N per-row checks.
+              const existingIds = pending
+                .map(r => JSON.parse(r.data))
+                .filter(t => t.supabaseId)
+                .map(t => t.supabaseId)
+              const serverDeletedIds = new Set()
+              if (existingIds.length > 0) {
+                const { data: deletedRows } = await supabaseClient
+                  .from('tasks')
+                  .select('id')
+                  .in('id', existingIds)
+                  .eq('user_id', currentUser.id)
+                  .not('deleted_at', 'is', null)
+                if (deletedRows) {
+                  deletedRows.forEach(r => serverDeletedIds.add(r.id))
                 }
+              }
+
+              const upsertPayload = []
+              const newFlushTasks = []
+
+              for (const row of pending) {
+                const task = JSON.parse(row.data)
+
+                // skip rows that were deleted locally (deleted_at set)
+                if (task.deleted_at) {
+                  try { await db.tasks.delete(row.localId) } catch (e) { }
+                  continue
+                }
+
+                // skip rows whose server copy was soft-deleted
+                if (task.supabaseId && serverDeletedIds.has(task.supabaseId)) {
+                  try { await db.tasks.delete(row.localId) } catch (e) { }
+                  tasks = tasks.filter(t => t.id !== task.id)
+                  continue
+                }
+
+                const payload = {
+                  ...(task.supabaseId ? { id: task.supabaseId } : {}),
+                  user_id: currentUser.id,
+                  title: task.title,
+                  notes: task.notes || '',
+                  category: task.category || 'personal',
+                  importance: task.importance,
+                  urgency: task.urgency,
+                  status: task.status,
+                  due_date: task.dueDate || null,
+                  due_time: task.dueTime || null,
+                  estimated_duration: task.estimatedDuration || null,
+                  recurring: task.recurring || false,
+                  recur_frequency: task.recurFrequency || null,
+                  recur_interval: task.recurInterval || 1,
+                  recur_days: task.recurDays || [],
+                  tags: task.tags || [],
+                  subtasks: task.subtasks || [],
+                  pinned: task.pinned || false,
+                  updated_at: new Date().toISOString()
+                }
+
+                upsertPayload.push(payload)
+                if (!task.supabaseId) {
+                  newFlushTasks.push(task)
+                }
+              }
+
+              // ── Single batch upsert (replaces per-row update/insert) ──
+              if (upsertPayload.length > 0) {
+                const { data, error } = await supabaseClient
+                  .from('tasks')
+                  .upsert(upsertPayload, { onConflict: 'id' })
+                  .select()
+                if (error) {
+                  console.error(`[flush:${source}] batch upsert failed (rows keep pendingSync:1):`, error)
+                } else if (data && newFlushTasks.length > 0) {
+                  const startIdx = data.length - newFlushTasks.length
+                  for (let i = 0; i < newFlushTasks.length; i++) {
+                    const row = data[startIdx + i]
+                    if (row?.id) {
+                      newFlushTasks[i].supabaseId = row.id
+                      const memTask = tasks.find(t => t.id === newFlushTasks[i].id)
+                      if (memTask) memTask.supabaseId = row.id
+                    }
+                  }
+                }
+              }
+
+              // Bulk mark all pending rows as synced
+              if (pending.length > 0) {
+                await db.tasks.bulkPut(pending.map(r => ({
+                  ...r,
+                  pendingSync: 0,
+                  updatedAt: new Date().toISOString()
+                })))
               }
 
             } finally {
@@ -3056,20 +3059,19 @@
               if (data) allData.push(...data);
             }
 
-            if (allData.length > 0) {
-              allData.forEach(row => {
-                const task = tasks.find(t => t.supabaseId === row.id);
-                if (task) task.supabaseId = row.id;
-              });
-              const insertedRows = allData.filter(row => !tasks.find(t => t.supabaseId === row.id));
-              toInsert.forEach((localTask, i) => {
-                const row = insertedRows[i];
-                if (!row) return;
-                const memTask = tasks.find(t => t.id === localTask.id);
-                if (memTask && !memTask.supabaseId) {
-                  memTask.supabaseId = row.id;
+            // ── Assign Supabase IDs to newly inserted tasks ──────
+            // Supabase .insert().select() returns rows in insertion order.
+            // Re-run the same filter to get local task objects in matching order.
+            if (toInsert.length > 0) {
+              const newLocalTasks = tasks.filter(t => !t.supabaseId);
+              // Insert results are the last N items in allData (insert runs after upsert)
+              const startIdx = allData.length - toInsert.length;
+              for (let i = 0; i < toInsert.length && i < newLocalTasks.length; i++) {
+                const row = allData[startIdx + i];
+                if (row && row.id) {
+                  newLocalTasks[i].supabaseId = row.id;
                 }
-              });
+              }
             }
 
             if (db) {
