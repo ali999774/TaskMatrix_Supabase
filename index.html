@@ -4415,7 +4415,7 @@
               const datePickerHtml = `
               <div id="datepicker-${task.id}" style="display:none; margin-top:4px;">
                 <input type="date"
-                  value="${task.dueDate || ''}"
+                  value="${escapeHTML(task.dueDate || '')}"
                   onchange="event.stopPropagation(); saveTaskDate(${task.id}, this.value)"
                   onclick="event.stopPropagation()"
                   style="font-size:12px; padding:4px 8px; border:1px solid var(--border-input);
