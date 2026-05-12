@@ -445,17 +445,14 @@ class ModelRouter {
       throw new Error('WebGPU not available in this browser');
     }
 
-    // 2. Load the WebLLM CDN script dynamically (only when needed)
+    // 2. Dynamically import WebLLM from esm.run CDN (only when needed)
     if (typeof webllm === 'undefined') {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/index.global.js';
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error('Failed to load WebLLM CDN'));
-        document.head.appendChild(script);
-      });
-      // Brief delay for WebLLM initialization
-      await new Promise(r => setTimeout(r, 100));
+      try {
+        const module = await import('https://esm.run/@mlc-ai/web-llm');
+        window.webllm = module;
+      } catch (e) {
+        throw new Error('Failed to load WebLLM: ' + e.message);
+      }
     }
 
     if (typeof webllm === 'undefined' || typeof webllm.CreateMLCEngine !== 'function') {

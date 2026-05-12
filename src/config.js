@@ -64,7 +64,7 @@ window.MODEL_ROUTER_CONFIG = {
 
   edge: {
     enabled: true,
-    model: 'gemma-3-1b-it',          // WebLLM model ID
+    model: 'gemma3-1b-it-q4f16_1-MLC',  // WebLLM model ID (Gemma 3 1B, 4-bit quantized)
     modelUrl: null,                  // null = WebLLM CDN; set for self-hosted
     maxTokens: 256,
     temperature: 0.3,
