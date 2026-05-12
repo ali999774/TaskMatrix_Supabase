@@ -9,6 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script src="src/voiceTask.js"></script>
+  <script src="src/voice-recorder.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TaskMatrix</title>
@@ -3368,6 +3369,64 @@
       function saveStats() { localStorage.setItem('userStats', JSON.stringify(userStats)); }
       function saveNotes() {}
       window._tmSaveNotes = saveNotes;
+
+      // ── Voice bridge: exposed for voice-recorder.js ──────────
+      window._tmAddVoiceTask = function(voiceResult) {
+        var qMap = {
+          'do-first':  { importance: 5, urgency: 5 },
+          'schedule':  { importance: 5, urgency: 2 },
+          'delegate':  { importance: 2, urgency: 5 },
+          'eliminate': { importance: 2, urgency: 2 }
+        };
+        var q = qMap[voiceResult.quadrant] || { importance: 5, urgency: 5 };
+        var newTask = {
+          id: Date.now(),
+          title: voiceResult.title,
+          category: activeContext === 'all' ? 'personal' : (activeContext || 'personal'),
+          status: 'todo',
+          dueDate: voiceResult.due_date || null,
+          importance: q.importance,
+          urgency: q.urgency,
+          notes: '',
+          tags: [],
+          subtasks: [],
+          created_via: 'voice',
+          createdAt: new Date().toISOString()
+        };
+        tasks.unshift(newTask);
+        saveTasks();
+        renderBoard();
+        if (typeof updatePWAStats === 'function') updatePWAStats();
+      };
+
+      // ── Voice bridge: exposed for voice-recorder.js ──────────
+      window._tmAddVoiceTask = function(voiceResult) {
+        var qMap = {
+          'do-first':  { importance: 5, urgency: 5 },
+          'schedule':  { importance: 5, urgency: 2 },
+          'delegate':  { importance: 2, urgency: 5 },
+          'eliminate': { importance: 2, urgency: 2 }
+        };
+        var q = qMap[voiceResult.quadrant] || { importance: 5, urgency: 5 };
+        var newTask = {
+          id: Date.now(),
+          title: voiceResult.title,
+          category: activeContext === 'all' ? 'personal' : (activeContext || 'personal'),
+          status: 'todo',
+          dueDate: voiceResult.due_date || null,
+          importance: q.importance,
+          urgency: q.urgency,
+          notes: '',
+          tags: [],
+          subtasks: [],
+          created_via: 'voice',
+          createdAt: new Date().toISOString()
+        };
+        tasks.unshift(newTask);
+        saveTasks();
+        renderBoard();
+        if (typeof updatePWAStats === 'function') updatePWAStats();
+      };
 
       function getQuad(imp, urg) {
         if (urg >= 4 && imp >= 4) return 'do-first';

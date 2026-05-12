@@ -66,6 +66,7 @@ jobs:
           mkdir -p _site/src
           find . -maxdepth 1 -name "*.html" -exec cp {} _site/ \;
           cp src/voiceTask.js _site/src/voiceTask.js
+          cp src/voice-recorder.js _site/src/voice-recorder.js
           cp src/model-router.js _site/src/model-router.js
           cp src/config.js   _site/src/config.js
           cp src/keys-ci.js  _site/src/keys-ci.js
