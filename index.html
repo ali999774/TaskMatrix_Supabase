@@ -3418,18 +3418,10 @@
         };
         tasks.unshift(newTask);
         saveTasks();
-        renderBoard();
+        render();
         if (typeof updatePWAStats === 'function') updatePWAStats();
       };
 
-      // ── Voice bridge: exposed for voice-recorder.js ──────────
-      window._tmAddVoiceTask = function(voiceResult) {
-        var qMap = {
-          'do-first':  { importance: 5, urgency: 5 },
-          'schedule':  { importance: 5, urgency: 2 },
-          'delegate':  { importance: 2, urgency: 5 },
-          'eliminate': { importance: 2, urgency: 2 }
-        };
         var q = qMap[voiceResult.quadrant] || { importance: 5, urgency: 5 };
         var newTask = {
           id: Date.now(),
@@ -3447,7 +3439,7 @@
         };
         tasks.unshift(newTask);
         saveTasks();
-        renderBoard();
+        render();
         if (typeof updatePWAStats === 'function') updatePWAStats();
       };
 
