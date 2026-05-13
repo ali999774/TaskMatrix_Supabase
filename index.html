@@ -1,3 +1,7 @@
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+chdir: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+chdir: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
 <!DOCTYPE html>
 <html lang="en">
 
@@ -3308,6 +3312,8 @@
             hideAuthScreen();
             const savedStats = localStorage.getItem('userStats');
             if (savedStats) userStats = JSON.parse(savedStats);
+            const savedNotes = localStorage.getItem('stickyNotes');
+            if (savedNotes) notes = JSON.parse(savedNotes);
             await checkAndMigrateLocalStorage();
             await flushPendingSync(); // flush pending Dexie changes before server overwrites local cache
             await loadTasksFromSupabase();
@@ -3372,6 +3378,8 @@
             }
             const savedStats = localStorage.getItem('userStats');
             if (savedStats) userStats = JSON.parse(savedStats);
+            const savedNotes = localStorage.getItem('stickyNotes');
+            if (savedNotes) notes = JSON.parse(savedNotes);
             await checkAndMigrateLocalStorage();
             await loadTasksFromSupabase();
             _initialLoadDone = true;
@@ -3390,7 +3398,7 @@
       }
 
       function saveStats() { localStorage.setItem('userStats', JSON.stringify(userStats)); }
-      function saveNotes() {}
+      function saveNotes() { localStorage.setItem('stickyNotes', JSON.stringify(notes)); }
       window._tmSaveNotes = saveNotes;
 
       // ── Voice bridge: exposed for voice-recorder.js ──────────
