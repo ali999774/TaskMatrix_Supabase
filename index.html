@@ -3422,26 +3422,6 @@
         if (typeof updatePWAStats === 'function') updatePWAStats();
       };
 
-        var q = qMap[voiceResult.quadrant] || { importance: 5, urgency: 5 };
-        var newTask = {
-          id: Date.now(),
-          title: voiceResult.title,
-          category: activeContext === 'all' ? 'personal' : (activeContext || 'personal'),
-          status: 'todo',
-          dueDate: voiceResult.due_date || null,
-          importance: q.importance,
-          urgency: q.urgency,
-          notes: '',
-          tags: [],
-          subtasks: [],
-          created_via: 'voice',
-          createdAt: new Date().toISOString()
-        };
-        tasks.unshift(newTask);
-        saveTasks();
-        render();
-        if (typeof updatePWAStats === 'function') updatePWAStats();
-      };
 
       function getQuad(imp, urg) {
         if (urg >= 4 && imp >= 4) return 'do-first';
