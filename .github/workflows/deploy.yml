@@ -49,11 +49,11 @@ jobs:
               else { localStorage.setItem('tm_key:' + n, v); window[n] = v; }
             };
           ENDKEYS
-          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "XAI_API_KEY"       "$XAI_API_KEY"
-          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "ANTHROPIC_API_KEY" "$ANTHROPIC_API_KEY"
-          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "OPENAI_API_KEY"    "$OPENAI_API_KEY"
-          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "SUPABASE_URL"      "$SUPABASE_URL"
-          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "SUPABASE_ANON_KEY" "$SUPABASE_ANON_KEY"
+          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "XAI_API_KEY"       "$XAI_API_KEY"       >> src/keys-ci.js
+          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "ANTHROPIC_API_KEY" "$ANTHROPIC_API_KEY" >> src/keys-ci.js
+          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "OPENAI_API_KEY"    "$OPENAI_API_KEY"    >> src/keys-ci.js
+          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "SUPABASE_URL"      "$SUPABASE_URL"      >> src/keys-ci.js
+          printf "  %s('%s', '%s');\\n" "_tmSetApiKey" "SUPABASE_ANON_KEY" "$SUPABASE_ANON_KEY" >> src/keys-ci.js
           printf "})();\\n" >> src/keys-ci.js
           # Inject script tag into index.html (before config.js)
           sed -i '' 's|<script src="src/config.js">|<script src="src/keys-ci.js"></script>\\\n  <script src="src/config.js">|' index.html 2>/dev/null || \
