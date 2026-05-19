@@ -1,4 +1,4 @@
-const CACHE_NAME = 'taskmatrix-v4'; // bumped to bust stale index.html cache
+const CACHE_NAME = 'taskmatrix-v5'; // bumped to force cache refresh after voice fixes
 const ASSETS_TO_CACHE = [
   '/TaskMatrix_Supabase/',
   '/TaskMatrix_Supabase/index.html',

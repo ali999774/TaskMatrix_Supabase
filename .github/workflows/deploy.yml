@@ -68,8 +68,9 @@ jobs:
           cp src/voiceTask.js _site/src/voiceTask.js
           cp src/voice-recorder.js _site/src/voice-recorder.js
           cp src/model-router.js _site/src/model-router.js
-          cp src/config.js   _site/src/config.js
-          cp src/keys-ci.js  _site/src/keys-ci.js
+          cp src/config.js       _site/src/config.js
+          cp src/key-manager.js _site/src/key-manager.js
+          cp src/keys-ci.js     _site/src/keys-ci.js
           cp -r public _site/public
 
       - name: Setup Pages
