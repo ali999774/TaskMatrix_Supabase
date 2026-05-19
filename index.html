@@ -2910,13 +2910,18 @@
                 }
               }
 
-              // Bulk mark all pending rows as synced
+              // Bulk mark all pending rows as synced, with fresh data blobs
               if (pending.length > 0) {
-                await db.tasks.bulkPut(pending.map(r => ({
-                  ...r,
-                  pendingSync: 0,
-                  updatedAt: new Date().toISOString()
-                })))
+                await db.tasks.bulkPut(pending.map(r => {
+                  const task = tasks.find(t => t.id === r.localId)
+                  return {
+                    localId: r.localId,
+                    supabaseId: task?.supabaseId || r.supabaseId,
+                    pendingSync: 0,
+                    updatedAt: new Date().toISOString(),
+                    data: task ? JSON.stringify(task) : r.data
+                  }
+                }))
               }
 
             } finally {
@@ -2984,18 +2989,11 @@
             return;
           }
 
-          // Write to Dexie first (always succeeds offline)
-          try {
-            await db.tasks.bulkPut(tasks.map(t => ({
-              localId: t.id,
-              supabaseId: t.supabaseId || null,
-              pendingSync: 1,
-              updatedAt: new Date().toISOString(),
-              data: JSON.stringify(t)
-            })))
-          } catch (dexieErr) {
-            console.warn('[saveTasks] Dexie write failed:', dexieErr)
-          }
+          // Persist to Dexie after successful Supabase sync (not before).
+          // Writing before sync marked ALL tasks pendingSync:1 — a crash
+          // during sync left the entire DB "dirty," causing full re-push
+          // (and duplicates) on next load. Now we only persist after sync
+          // succeeds. flushPendingSync handles the offline/crash recovery path.
 
           // Single-flight dedup: if a Supabase sync is already in progress,
           // mark dirty and return the in-flight promise so all callers await
@@ -3198,7 +3196,7 @@
 
           console.log('[TaskMatrix] loadTasksFromSupabase → merge result', { kept: keptCount, added: addedCount, removed: removedCount, dedupRemoved });
 
-          // Fix 4: Update Dexie cache with fresh data
+          // Fix 4: Update Dexie cache with fresh data + purge stale rows
           try {
             await db.tasks.bulkPut(tasks.map(t => ({
               localId: t.id,
@@ -3207,6 +3205,17 @@
               updatedAt: new Date().toISOString(),
               data: JSON.stringify(t)
             })))
+            // Purge stale Dexie rows: any row with a server ID not in the
+            // current response is a deleted/orphaned task. Local-only tasks
+            // (no supabaseId, pendingSync:1) are kept.
+            const allDexieRows = await db.tasks.toArray()
+            const staleRows = allDexieRows.filter(r => {
+              if (!r.supabaseId) return false  // local-only, keep
+              return !incomingIds.has(r.supabaseId)
+            })
+            if (staleRows.length > 0) {
+              await db.tasks.bulkDelete(staleRows.map(r => r.localId))
+            }
           } catch (dexieErr) {
             console.warn('[loadTasks] Dexie cache update failed:', dexieErr)
           }
