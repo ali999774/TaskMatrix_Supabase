@@ -74,6 +74,14 @@ jobs:
           cp sw.js              _site/sw.js
           cp -r public          _site/public
 
+      # Strip any shell-init/ stderr garbage that may have leaked into files
+      - name: Sanitize deployed files
+        run: |
+          for f in _site/src/*.js _site/sw.js _site/index.html; do
+            [ -f "$f" ] || continue
+            sed -i '/^shell-init:/d; /^chdir:/d' "$f"
+          done
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 

@@ -2671,6 +2671,31 @@
         dot.style.animation = state === 'syncing' ? 'pulse 1s infinite' : 'none';
       }
 
+      // ── Sync heartbeat: auto-heals stale error states ──────────
+      let _syncHeartbeatTimer = null;
+      const SYNC_HEARTBEAT_MS = 30000;
+
+      function _startSyncHeartbeat() {
+        if (_syncHeartbeatTimer) return;
+        _syncHeartbeatTimer = setInterval(() => {
+          if (!navigator.onLine) return;
+          // If nothing is in-flight and no real error, clear stale flags
+          if (_syncOpsInFlight === 0 && (!_syncHasError || !_syncRealtimeOk)) {
+            const wasStale = _syncHasError || !_syncRealtimeOk;
+            _syncHasError = false;
+            _syncRealtimeOk = true;
+            if (wasStale) _flushSyncDisplay();
+          }
+        }, SYNC_HEARTBEAT_MS);
+      }
+
+      function _stopSyncHeartbeat() {
+        if (_syncHeartbeatTimer) {
+          clearInterval(_syncHeartbeatTimer);
+          _syncHeartbeatTimer = null;
+        }
+      }
+
       // ── Auth helpers ─────────────────────────────────────────────
       async function signInWithGoogle() {
         if (!supabaseClient) { console.warn('[Auth] Supabase not available'); return; }
@@ -2682,6 +2707,7 @@
       }
 
       async function signOut() {
+        _stopSyncHeartbeat();
         await supabaseClient.auth.signOut();
         currentUser = null;
         tasks = [];
@@ -3319,6 +3345,7 @@
             renderPinnedNotes();
             updateStatsDisplay();
             setupRealtime(currentUser.id); // Phase 2A: realtime sync
+            _startSyncHeartbeat();
           } else if (!navigator.onLine && db) {
             // FIX 3: offline boot — load from Dexie cache if no session available
             try {
@@ -3384,6 +3411,7 @@
             renderPinnedNotes();
             updateStatsDisplay();
             setupRealtime(currentUser.id); // Phase 2A: realtime sync
+            _startSyncHeartbeat();
           } else if (event === 'SIGNED_OUT') {
             tasks = [];
             notes = [];
