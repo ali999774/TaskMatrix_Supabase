@@ -71,7 +71,8 @@ jobs:
           cp src/config.js       _site/src/config.js
           cp src/key-manager.js _site/src/key-manager.js
           cp src/keys-ci.js     _site/src/keys-ci.js
-          cp -r public _site/public
+          cp sw.js              _site/sw.js
+          cp -r public          _site/public
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
