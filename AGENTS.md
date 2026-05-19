@@ -102,7 +102,8 @@ npx playwright test tests/sortable-touch.spec.js
 
 ## Known Issues
 
-- **Sync dot stuck red/orange** — FIXED (2026-05-18). Added 30s heartbeat (`_startSyncHeartbeat`) that auto-heals stale `_syncHasError` and `_syncRealtimeOk` flags. Starts on auth, stops on sign-out.
+- **Sync dot stuck red/orange** — FIXED (2026-05-18)
+- **Sticky notes cross-device sync** — FIXED (2026-05-19). Sticky notes (colorful cards in bottom panel) now sync via Supabase `sticky_notes` table. Previously localStorage-only. Uses `saveNotes()` → debounced upsert, `loadStickyNotesFromSupabase()` merge on init, and `syncStickyNotesToSupabase()` in `flushPendingSync` for offline→online recovery.. Added 30s heartbeat (`_startSyncHeartbeat`) that auto-heals stale `_syncHasError` and `_syncRealtimeOk` flags. Starts on auth, stops on sign-out.
 - **Shell-init garbage** — MITIGATED. CI deploy workflow now runs a sanitizer step that strips `shell-init:` and `chdir:` lines from all deployed files. Local: strip with `re.sub(r'^(shell-init:|chdir:).*\n?', '', content, flags=re.MULTILINE).lstrip('\n')`
 
 ## Architecture Gotchas
