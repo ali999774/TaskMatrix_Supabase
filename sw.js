@@ -1,4 +1,4 @@
-const CACHE_NAME = 'taskmatrix-v6'; // bumped for sticky notes sync fix
+const CACHE_NAME = 'taskmatrix-v8'; // bumped to kill old SW + pinned fix
 const ASSETS_TO_CACHE = [
   '/TaskMatrix_Supabase/',
   '/TaskMatrix_Supabase/index.html',
@@ -7,12 +7,7 @@ const ASSETS_TO_CACHE = [
   'https://ali999774.github.io/TaskMatrix_Supabase/index.html'
 ];
 
-// CDN scripts required for the app to function offline.
-// Cached with no-cors so opaque responses are accepted.
-const CDN_ASSETS = [
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
-  'https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.js'
-];
+// CDN scripts no longer pre-cached with no-cors to save opaque storage limit.
 
 const DB_NAME = 'taskmatrix-offline';
 const STORE_NAME = 'pending-saves';
@@ -28,13 +23,6 @@ self.addEventListener('install', (event) => {
       await Promise.allSettled(
         ASSETS_TO_CACHE.map(url =>
           cache.add(url).catch(err => console.warn('[SW] Failed to cache:', url, err))
-        )
-      );
-      // Pre-cache CDN scripts with no-cors (opaque responses are fine for scripts)
-      await Promise.allSettled(
-        CDN_ASSETS.map(url =>
-          cache.add(new Request(url, { mode: 'no-cors' }))
-            .catch(err => console.warn('[SW] Failed to pre-cache CDN:', url, err))
         )
       );
     })
@@ -69,22 +57,9 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request.clone())
         .catch(async (error) => {
-          // If mutation and failing due to network/offline
-          if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(event.request.method)) {
-            try {
-              await queueRequest(event.request.clone());
-              // Register Background Sync if available
-              if ('sync' in self.registration) {
-                await self.registration.sync.register('sync-tasks');
-              }
-            } catch (idbError) {
-              console.error('[SW] Failed to queue request:', idbError);
-            }
-          }
-          
           return new Response(JSON.stringify({ 
             error: 'Offline', 
-            message: 'Your changes are queued and will sync when you are back online.',
+            message: 'Your changes will sync when you are back online.',
             status: 503 
           }), {
             status: 503,
@@ -146,83 +121,5 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// --- BACKGROUND SYNC ---
-
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-tasks') {
-    console.log('[SW] Background sync triggered: sync-tasks');
-    event.waitUntil(processQueue());
-  }
-});
-
-// --- INDEXEDDB HELPERS ---
-
-async function getDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-      }
-    };
-    request.onsuccess = (e) => resolve(e.target.result);
-    request.onerror = (e) => reject(e.target.error);
-  });
-}
-
-async function queueRequest(request) {
-  const db = await getDB();
-  const body = await request.text();
-  const entry = {
-    url: request.url,
-    method: request.method,
-    headers: Object.fromEntries(request.headers.entries()),
-    body: body,
-    timestamp: Date.now()
-  };
-
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const addRequest = store.add(entry);
-    addRequest.onsuccess = () => resolve();
-    addRequest.onerror = (e) => reject(e.target.error);
-  });
-}
-
-async function processQueue() {
-  const db = await getDB();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  const store = tx.objectStore(STORE_NAME);
-  
-  const requests = await new Promise((resolve) => {
-    const getAll = store.getAll();
-    getAll.onsuccess = () => resolve(getAll.result);
-  });
-
-  if (requests.length === 0) return;
-
-  console.log(`[SW] Processing ${requests.length} pending saves...`);
-
-  for (const req of requests) {
-    try {
-      const response = await fetch(req.url, {
-        method: req.method,
-        headers: req.headers,
-        body: req.body
-      });
-
-      if (response.ok) {
-        console.log(`[SW] Successfully synced request: ${req.id}`);
-        const deleteTx = db.transaction(STORE_NAME, 'readwrite');
-        deleteTx.objectStore(STORE_NAME).delete(req.id);
-      } else {
-        console.warn(`[SW] Sync failed for request ${req.id}:`, response.status);
-      }
-    } catch (error) {
-      console.error(`[SW] Network error during sync for request ${req.id}:`, error);
-      break; // Stop processing if we're still offline
-    }
-  }
-}
+// Background Sync and IndexedDB queuing logic has been removed.
+// Offline sync is fully managed at the application layer by Dexie and flushPendingSync.
