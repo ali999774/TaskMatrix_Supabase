@@ -3794,10 +3794,10 @@
 
       function renderNotes(searchTerm = '') {
         const grid = document.getElementById('notes-grid');
-        let filteredNotes = notes;
+        let filteredNotes = notes.filter(n => !n.pinned);
 
         if (searchTerm) {
-          filteredNotes = notes.filter(n =>
+          filteredNotes = filteredNotes.filter(n =>
             n.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
             n.content.toLowerCase().includes(searchTerm.toLowerCase())
           );
