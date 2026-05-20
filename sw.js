@@ -1,4 +1,4 @@
-const CACHE_NAME = 'taskmatrix-v5'; // bumped to force cache refresh after voice fixes
+const CACHE_NAME = 'taskmatrix-v6'; // bumped for sticky notes sync fix
 const ASSETS_TO_CACHE = [
   '/TaskMatrix_Supabase/',
   '/TaskMatrix_Supabase/index.html',
