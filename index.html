@@ -3470,7 +3470,6 @@
             .from('sticky_notes')
             .select('*')
             .eq('user_id', currentUser.id)
-            .is('deleted_at', null)
             .order('updated_at', { ascending: false });
           if (error) throw error;
           if (!data || data.length === 0) {
@@ -3514,7 +3513,7 @@
             banner.onclick = function() { this.remove(); };
             document.body.appendChild(banner);
           }
-          banner.textContent = '⚠️ Sticky notes load failed: using offline data';
+          banner.textContent = '⚠️ Sticky notes load failed: ' + (err.message || err.code || 'unknown') + '. Using offline data.';
         }
       }
 
