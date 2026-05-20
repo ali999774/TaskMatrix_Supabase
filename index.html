@@ -3455,7 +3455,7 @@
           title: row.title || 'Untitled',
           content: row.content || '',
           color: row.color || '#3b82f6',
-          pinned: row.pinned || false,
+          pinned: row.pinned === true,
           position_x: row.position_x || 0,
           position_y: row.position_y || 0,
           createdAt: row.created_at || new Date().toISOString(),
@@ -3529,7 +3529,7 @@
             color: n.color || '#3b82f6',
             position_x: n.position_x || 0,
             position_y: n.position_y || 0,
-            pinned: n.pinned || false,
+            pinned: n.pinned === true,
             updated_at: new Date().toISOString()
           }));
 
@@ -3994,23 +3994,14 @@
 
       async function deleteCurrentNote() {
         if (!currentEditingNote) return;
-        if (confirm('Delete this note?')) {
-          const noteId = currentEditingNote.id;
-          const supabaseId = currentEditingNote.supabaseId;
-          notes = notes.filter(n => n.id !== noteId);
-          saveNotes();
-          renderNotes();
-          renderPinnedNotes();
-          closeNoteEditModal();
-          // Delete from Supabase so it doesn't reappear on next load
-          if (!supabaseId) {
-            console.warn('[stickyNotes] delete skipped — no supabaseId on note', noteId);
-            return;
-          }
-          if (!currentUser || !supabaseClient) {
-            console.warn('[stickyNotes] delete skipped — not signed in');
-            return;
-          }
+        if (!confirm('Delete this note?')) return;
+
+        const noteId = currentEditingNote.id;
+        const supabaseId = currentEditingNote.supabaseId;
+
+        // Delete from Supabase FIRST so it doesn't reappear on next load
+        let supabaseDeleted = false;
+        if (supabaseId && currentUser && supabaseClient) {
           try {
             const { error } = await supabaseClient.from('sticky_notes').delete().eq('id', supabaseId);
             if (error) {
@@ -4027,11 +4018,21 @@
               b.textContent = '⚠️ Delete failed: ' + error.message + ' (' + error.code + '). Note may reappear on refresh.';
             } else {
               console.log('[stickyNotes] deleted from Supabase:', supabaseId);
+              supabaseDeleted = true;
             }
           } catch (err) {
             console.error('[stickyNotes] delete error:', err.message);
           }
+        } else if (!supabaseId) {
+          console.warn('[stickyNotes] delete skipped — no supabaseId on note', noteId);
         }
+
+        // Remove from local state
+        notes = notes.filter(n => n.id !== noteId);
+        saveNotes();
+        renderNotes();
+        renderPinnedNotes();
+        closeNoteEditModal();
       }
 
       async function convertNoteToTask() {
