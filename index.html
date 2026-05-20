@@ -3474,8 +3474,8 @@
             .order('updated_at', { ascending: false });
           if (error) throw error;
           if (!data || data.length === 0) {
-            notes = [];
-            saveNotes();
+            // No server data — keep local notes and push them up
+            syncStickyNotesToSupabase();
             return;
           }
           const prevNotes = notes; // snapshot local notes before overwriting
