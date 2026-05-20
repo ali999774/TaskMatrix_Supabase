@@ -3450,7 +3450,7 @@
 
       function mapRowToStickyNote(row) {
         return {
-          id: row.local_id ? Number(row.local_id) : Date.now(),
+          id: Date.now(),
           supabaseId: row.id,
           title: row.title || 'Untitled',
           content: row.content || '',
@@ -3515,7 +3515,6 @@
           const toUpsert = notes.map(n => ({
             id: n.supabaseId || undefined,
             user_id: currentUser.id,
-            local_id: String(n.id),
             title: n.title || 'Untitled',
             content: n.content || '',
             color: n.color || '#3b82f6',
@@ -3548,12 +3547,12 @@
             if (data) allData = [...allData, ...data];
           }
 
-          // Assign supabaseId back to local notes
-          for (let i = 0; i < notes.length; i++) {
-            if (!notes[i].supabaseId) {
-              const match = allData.find(row => String(row.local_id) === String(notes[i].id));
-              if (match) notes[i].supabaseId = match.id;
-            }
+          // Assign supabaseId back to newly inserted notes by index order.
+          // Supabase .insert().select() returns rows in insertion order.
+          const newNotes = notes.filter(n => !n.supabaseId);
+          const insertResults = allData.slice(-newNotes.length); // inserts are last in allData
+          for (let i = 0; i < newNotes.length && i < insertResults.length; i++) {
+            if (insertResults[i].id) newNotes[i].supabaseId = insertResults[i].id;
           }
           if (allData.length > 0) saveNotes();
         } catch (err) {
