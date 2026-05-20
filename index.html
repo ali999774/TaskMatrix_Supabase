@@ -3995,11 +3995,19 @@
       function deleteCurrentNote() {
         if (!currentEditingNote) return;
         if (confirm('Delete this note?')) {
-          notes = notes.filter(n => n.id !== currentEditingNote.id);
+          const noteId = currentEditingNote.id;
+          const supabaseId = currentEditingNote.supabaseId;
+          notes = notes.filter(n => n.id !== noteId);
           saveNotes();
           renderNotes();
           renderPinnedNotes();
           closeNoteEditModal();
+          // Delete from Supabase so it doesn't reappear on next load
+          if (supabaseId && currentUser && supabaseClient) {
+            supabaseClient.from('sticky_notes').delete().eq('id', supabaseId)
+              .then(() => console.log('[stickyNotes] deleted from Supabase:', supabaseId))
+              .catch(err => console.warn('[stickyNotes] delete from Supabase failed:', err.message));
+          }
         }
       }
 
