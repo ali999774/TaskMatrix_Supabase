@@ -5643,6 +5643,96 @@
       }
     </script>
 
+    <!-- ── Debug Panel (activate with ?debug=1) ──────────────────── -->
+    <div id="tm-debug-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;max-height:40vh;background:#1e293b;color:#e2e8f0;font-family:monospace;font-size:12px;z-index:99999;overflow-y:auto;border-top:2px solid #6366f1;padding:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong style="color:#818cf8;">🔧 TaskMatrix Debug</strong>
+        <button onclick="document.getElementById('tm-debug-panel').style.display='none'" style="background:#ef4444;color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;">✕</button>
+      </div>
+      <div id="tm-debug-content" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+        <div id="tm-debug-sw"><strong>Service Worker</strong><br>Loading…</div>
+        <div id="tm-debug-sync"><strong>Last Sync</strong><br>Loading…</div>
+        <div id="tm-debug-data"><strong>Notes Array</strong><br>Loading…</div>
+      </div>
+    </div>
+    <script>
+    (function() {
+      if (!/debug=1/.test(location.search)) return;
+      var panel = document.getElementById('tm-debug-panel');
+      panel.style.display = 'block';
+
+      // Capture console errors
+      var errors = [];
+      var origError = console.error;
+      console.error = function() {
+        errors.push(Array.from(arguments).join(' '));
+        if (errors.length > 20) errors.shift();
+        origError.apply(console, arguments);
+      };
+
+      function updateDebug() {
+        // SW info
+        var swDiv = document.getElementById('tm-debug-sw');
+        var hasSW = !!navigator.serviceWorker;
+        var controlled = hasSW && !!navigator.serviceWorker.controller;
+        swDiv.innerHTML = '<strong>Service Worker</strong><br>' +
+          'Supported: ' + (hasSW ? '✅' : '❌') + '<br>' +
+          'Active: ' + (controlled ? '✅' : '❌') + '<br>' +
+          'Cache: taskmatrix-v8';
+
+        // Sync info
+        var syncDiv = document.getElementById('tm-debug-sync');
+        try {
+          var raw = localStorage.getItem('stickyNotes');
+          var parsed = raw ? JSON.parse(raw) : null;
+          var lastSync = localStorage.getItem('tm_lastSync');
+          syncDiv.innerHTML = '<strong>Last Sync</strong><br>' +
+            'localStorage notes: ' + (parsed ? parsed.length : 0) + '<br>' +
+            'Last sync: ' + (lastSync || 'never');
+        } catch(e) {
+          syncDiv.innerHTML = '<strong>Last Sync</strong><br>Error: ' + e.message;
+        }
+
+        // Notes array
+        var dataDiv = document.getElementById('tm-debug-data');
+        try {
+          if (typeof notes !== 'undefined' && Array.isArray(notes)) {
+            var lines = ['<strong>Notes Array</strong><br>Count: ' + notes.length];
+            notes.forEach(function(n, i) {
+              lines.push('[' + i + '] pinned=' + n.pinned + ' title=' + (n.title || '?').substring(0,20) + ' hasSupabaseId=' + !!n.supabaseId);
+            });
+            dataDiv.innerHTML = lines.join('<br>');
+          } else {
+            dataDiv.innerHTML = '<strong>Notes Array</strong><br>Not loaded (sign in first)';
+          }
+        } catch(e) {
+          dataDiv.innerHTML = '<strong>Notes Array</strong><br>Error: ' + e.message;
+        }
+
+        // Errors
+        if (errors.length > 0) {
+          var errDiv = document.createElement('div');
+          errDiv.style.cssText = 'grid-column:1/-1;margin-top:8px;padding:8px;background:#7f1d1d;border-radius:4px;';
+          errDiv.innerHTML = '<strong>Console Errors (' + errors.length + '):</strong><br>' + errors.map(function(e){return e.substring(0,100)}).join('<br>');
+          document.getElementById('tm-debug-content').appendChild(errDiv);
+        }
+      }
+
+      // Run on load and every 2 seconds
+      updateDebug();
+      setInterval(updateDebug, 2000);
+
+      // Store last sync timestamp
+      var origSaveNotes = window.saveNotes;
+      if (origSaveNotes) {
+        window.saveNotes = function() {
+          localStorage.setItem('tm_lastSync', new Date().toISOString());
+          return origSaveNotes.apply(this, arguments);
+        };
+      }
+    })();
+    </script>
+
     <!-- Auth Screen Overlay -->
     <div id="auth-screen" style="display:none; position:fixed; inset:0;
     background:var(--bg-glass); backdrop-filter:blur(12px);
