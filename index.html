@@ -3976,6 +3976,7 @@
         } else {
           const newNote = {
             id: Date.now(),
+            supabaseId: crypto.randomUUID(),
             title: title || 'Untitled',
             content: content,
             color: currentNoteColor,
