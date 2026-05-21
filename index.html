@@ -5875,20 +5875,27 @@
           syncDiv.innerHTML = '<strong>Last Sync</strong><br>Error: ' + e.message;
         }
 
-        // Notes array
+        // Notes + Tasks array
         var dataDiv = document.getElementById('tm-debug-data');
         try {
+          var lines = [];
+          if (typeof tasks !== 'undefined' && Array.isArray(tasks)) {
+            var withSupabase = tasks.filter(function(t) { return !!t.supabaseId; }).length;
+            var deleted = tasks.filter(function(t) { return !!t.deleted_at; }).length;
+            lines.push('<strong>Tasks</strong><br>Total: ' + tasks.length + ' | synced: ' + withSupabase + ' | deleted: ' + deleted);
+          }
           if (typeof notes !== 'undefined' && Array.isArray(notes)) {
-            var lines = ['<strong>Notes Array</strong><br>Count: ' + notes.length];
+            lines.push('<br><strong>Notes</strong><br>Count: ' + notes.length);
             notes.forEach(function(n, i) {
               lines.push('[' + i + '] pinned=' + n.pinned + ' title=' + (n.title || '?').substring(0,20) + ' hasSupabaseId=' + !!n.supabaseId);
             });
-            dataDiv.innerHTML = lines.join('<br>');
-          } else {
-            dataDiv.innerHTML = '<strong>Notes Array</strong><br>Not loaded (sign in first)';
           }
+          if (lines.length === 0) {
+            lines.push('Not loaded (sign in first)');
+          }
+          dataDiv.innerHTML = lines.join('<br>');
         } catch(e) {
-          dataDiv.innerHTML = '<strong>Notes Array</strong><br>Error: ' + e.message;
+          dataDiv.innerHTML = '<strong>Data</strong><br>Error: ' + e.message;
         }
 
         // Errors
