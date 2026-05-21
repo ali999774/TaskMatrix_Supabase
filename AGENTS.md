@@ -112,6 +112,7 @@ npx playwright test tests/sortable-touch.spec.js
 - **`mapRowToTask`** — Supabase reload generates new random IDs. Fix: reuse existing in-memory ID: `tasks.find(t => t.supabaseId === row.id)?.id ?? (Date.now() + Math.random())`
 - **Touch ghost clicks** — deferred synthetic clicks from touch events can fire on modal overlays. Guard: 300ms timestamp check on `closeModalOnOverlay`.
 - **Service worker cache** — version `taskmatrix-v4`. Always hard-refresh after deploy.
+- **🔥 Tombstones/flags: single clearing authority.** Any marker (tombstone, `deleted_at`, pending flag) must have EXACTLY ONE function that clears it. In May 2026, 7 fixes over 3 days failed because `deleteCurrentNote()` cleared tombstones that `loadStickyNotesFromSupabase()` was also clearing — and the premature clear allowed an in-flight upsert race to resurrect deleted notes. **Before writing a fix for any resurrection/reappearing-data bug: (1) add console instrumentation first, (2) trace who sets AND who clears the marker, (3) ensure only one remover exists.**
 
 ## Ali's Preferences
 
