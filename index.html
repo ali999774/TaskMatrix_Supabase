@@ -3472,11 +3472,14 @@
       function addStickyTombstone(supabaseId) {
         if (!supabaseId) return;
         setStickyTombstones([...getStickyTombstones(), supabaseId]);
+        console.log('🪦 [tombstone] ADDED', supabaseId, '→', getStickyTombstones().length, 'total');
       }
       function removeStickyTombstones(supabaseIds) {
         if (!supabaseIds || supabaseIds.length === 0) return;
         const drop = new Set(supabaseIds);
+        const before = getStickyTombstones().length;
         setStickyTombstones(getStickyTombstones().filter(id => !drop.has(id)));
+        console.log('🪦 [tombstone] REMOVED', supabaseIds.length, 'ids →', getStickyTombstones().length, 'remaining (was', before, ')');
       }
 
       let _stickyNoteIdCounter = 0;
@@ -3712,6 +3715,18 @@
       window._tmSaveNotes = saveNotes;
       window._tmSyncStickyNotes = syncStickyNotesToSupabase;
       window._tmLoadStickyNotes = loadStickyNotesFromSupabase;
+      window._tmDumpStickyState = function() {
+        var raw = localStorage.getItem('stickyNotes');
+        var notes = raw ? JSON.parse(raw) : [];
+        var tr = localStorage.getItem('stickyNoteTombstones');
+        var tombstones = tr ? JSON.parse(tr) : [];
+        console.group('🔍 Sticky Notes State');
+        console.log('localStorage notes:', notes.length, notes.map(function(n){ return {title: n.title, supabaseId: (n.supabaseId||'').substring(0,8), pinned: n.pinned}; }));
+        console.log('Tombstones:', tombstones.length, tombstones);
+        console.log('In-memory notes:', typeof notes !== 'undefined' ? notes.length : 'not loaded');
+        console.groupEnd();
+        return { notes: notes, tombstones: tombstones };
+      };
 
       // ── Voice bridge: exposed for voice-recorder.js ──────────
       window._tmAddVoiceTask = function(voiceResult) {
@@ -5847,8 +5862,11 @@
           var raw = localStorage.getItem('stickyNotes');
           var parsed = raw ? JSON.parse(raw) : null;
           var lastSync = localStorage.getItem('tm_lastSync');
+          var tombstones = [];
+          try { var tr = localStorage.getItem('stickyNoteTombstones'); tombstones = tr ? JSON.parse(tr) : []; } catch(e) {}
           syncDiv.innerHTML = '<strong>Last Sync</strong><br>' +
             'localStorage notes: ' + (parsed ? parsed.length : 0) + '<br>' +
+            'Tombstones: ' + tombstones.length + (tombstones.length > 0 ? ' (' + tombstones.map(function(id){return id.substring(0,8)}).join(', ') + '…)' : '') + '<br>' +
             'Last sync: ' + (lastSync || 'never');
         } catch(e) {
           syncDiv.innerHTML = '<strong>Last Sync</strong><br>Error: ' + e.message;
