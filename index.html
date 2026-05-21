@@ -4028,7 +4028,11 @@
         const noteId = currentEditingNote.id;
         const supabaseId = currentEditingNote.supabaseId;
 
-        // Delete from Supabase FIRST so it doesn't reappear on next load
+        // Delete from Supabase FIRST so it doesn't reappear on next load.
+        // If the delete fails, DO NOT remove from local state — the note
+        // would silently disappear then resurrect on next refresh because
+        // loadStickyNotesFromSupabase() has no way to know it was deleted.
+        var deleteSucceeded = !supabaseId; // no supabaseId = never synced, safe to delete locally
         if (supabaseId && currentUser && supabaseClient) {
           try {
             const { error } = await supabaseClient.from('sticky_notes').delete().eq('id', supabaseId);
@@ -4042,13 +4046,31 @@
                 b.onclick = function() { this.remove(); };
                 document.body.appendChild(b);
               }
-              b.textContent = '⚠️ Delete failed: ' + error.message + ' (' + error.code + '). Note may reappear on refresh.';
+              b.textContent = '⚠️ Delete sync failed: ' + error.message + ' (' + error.code + '). Note kept — try again.';
+              // NOTE: fall through — deleteSucceeded stays false, note stays in local state
             } else {
               console.log('[stickyNotes] deleted from Supabase:', supabaseId);
+              deleteSucceeded = true;
             }
           } catch (err) {
             console.error('[stickyNotes] delete error:', err.message);
+            // Network error / offline — keep note locally, it'll sync when online
+            var b = document.getElementById('sticky-sync-error');
+            if (!b) {
+              b = document.createElement('div');
+              b.id = 'sticky-sync-error';
+              b.style.cssText = 'position:fixed;bottom:16px;right:16px;background:#ef4444;color:#fff;padding:12px 16px;border-radius:8px;z-index:9999;font-size:13px;max-width:320px;cursor:pointer';
+              b.onclick = function() { this.remove(); };
+              document.body.appendChild(b);
+            }
+            b.textContent = '⚠️ Delete failed (offline?): ' + err.message + '. Note kept — try again when online.';
           }
+        }
+
+        if (!deleteSucceeded) {
+          // Server delete failed — keep the note visible so the user knows
+          // it wasn't really deleted. The error banner explains why.
+          return;
         }
 
         // Remove from local state — use supabaseId (stable) as primary key,
