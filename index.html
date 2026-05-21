@@ -3554,7 +3554,13 @@
           const inserts = toUpsert.filter(p => !p.id).map(({ id, ...rest }) => ({ ...rest, created_at: new Date().toISOString() }));
           const updates = toUpsert.filter(p => p.id);
 
-          let allData = [];
+          // Snapshot local IDs of notes being inserted BEFORE any awaits.
+          // notes[] may change during the async network calls (e.g. user deletes a note
+          // while the insert is in-flight), so we need this to correctly match results
+          // back to local notes and detect orphaned server rows.
+          const noteIdsBeingInserted = notes.filter(n => !n.supabaseId).map(n => n.id);
+
+          let synced = 0;
 
           if (updates.length > 0) {
             const { data, error } = await supabaseClient
@@ -3562,7 +3568,18 @@
               .upsert(updates, { onConflict: 'id' })
               .select();
             if (error) throw error;
-            if (data) allData = data;
+            synced += data?.length ?? 0;
+
+            // Race-condition cleanup: a note may have been deleted locally while the
+            // upsert was in-flight. If deleteCurrentNote()'s explicit DELETE ran before
+            // this upsert completed, the upsert will have re-inserted the row. Delete
+            // those zombie rows now so they don't come back on the next page refresh.
+            const currentSupabaseIds = new Set(notes.map(n => n.supabaseId).filter(Boolean));
+            const reinserted = updates.filter(u => u.id && !currentSupabaseIds.has(u.id)).map(u => u.id);
+            if (reinserted.length > 0) {
+              await supabaseClient.from('sticky_notes').delete().in('id', reinserted);
+              console.log('[stickyNotes] removed re-upserted notes deleted during sync:', reinserted);
+            }
           }
 
           if (inserts.length > 0) {
@@ -3571,19 +3588,36 @@
               .insert(inserts)
               .select();
             if (error) throw error;
-            if (data) allData = [...allData, ...data];
+            if (data) {
+              synced += data.length;
+
+              // Match insert results to local notes using the pre-await local ID snapshot.
+              // This is safe even if notes[] changed during the await (deletions, edits).
+              // Using index matching is safe here because insert() preserves row order.
+              const orphanedSupabaseIds = [];
+              for (let i = 0; i < noteIdsBeingInserted.length && i < data.length; i++) {
+                const localId = noteIdsBeingInserted[i];
+                const supabaseId = data[i]?.id;
+                if (!supabaseId) continue;
+                const currentNote = notes.find(n => n.id === localId);
+                if (currentNote) {
+                  currentNote.supabaseId = supabaseId;
+                } else {
+                  // Note was deleted locally while the insert was in-flight — it now
+                  // exists in Supabase as an orphan. Delete it to prevent resurrection.
+                  orphanedSupabaseIds.push(supabaseId);
+                }
+              }
+              if (orphanedSupabaseIds.length > 0) {
+                await supabaseClient.from('sticky_notes').delete().in('id', orphanedSupabaseIds);
+                console.log('[stickyNotes] removed orphaned notes inserted during sync:', orphanedSupabaseIds);
+              }
+            }
           }
 
-          // Assign supabaseId back to newly inserted notes by index order.
-          // Supabase .insert().select() returns rows in insertion order.
-          const newNotes = notes.filter(n => !n.supabaseId);
-          const insertResults = allData.slice(-newNotes.length); // inserts are last in allData
-          for (let i = 0; i < newNotes.length && i < insertResults.length; i++) {
-            if (insertResults[i].id) newNotes[i].supabaseId = insertResults[i].id;
-          }
-          if (allData.length > 0) {
+          if (synced > 0) {
             saveNotes();
-            console.log('[stickyNotes] synced ' + allData.length + ' notes to Supabase');
+            console.log('[stickyNotes] synced ' + synced + ' notes to Supabase');
             // Remove any error banner on success
             var banner = document.getElementById('sticky-sync-error');
             if (banner) banner.remove();
