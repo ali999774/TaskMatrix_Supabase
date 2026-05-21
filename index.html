@@ -3450,7 +3450,7 @@
 
       function mapRowToStickyNote(row) {
         return {
-          id: Date.now(),
+          id: notes.find(n => n.supabaseId === row.id)?.id ?? (Date.now() + Math.random()),
           supabaseId: row.id,
           title: row.title || 'Untitled',
           content: row.content || '',
@@ -3483,7 +3483,7 @@
           // Merge: keep local-only (unsynced) notes + resolve conflicts by modifiedAt
           const serverNotes = notes;
           const serverIds = new Set(serverNotes.map(n => n.supabaseId));
-          const localOnly = prevNotes.filter(n => !n.supabaseId || !serverIds.has(n.supabaseId));
+          const localOnly = prevNotes.filter(n => !n.supabaseId);
 
           for (const sn of serverNotes) {
             const localMatch = prevNotes.find(n => n.supabaseId === sn.supabaseId);
@@ -3968,11 +3968,19 @@
         }
 
         if (currentEditingNote) {
-          currentEditingNote.title = title;
-          currentEditingNote.content = content;
-          currentEditingNote.color = currentNoteColor;
-          currentEditingNote.pinned = pinned;
-          currentEditingNote.modifiedAt = new Date().toISOString();
+          // Re-resolve from current array — loadStickyNotesFromSupabase may have
+          // rebuilt notes[] while the modal was open, orphaning the old reference.
+          const liveNote = currentEditingNote.supabaseId
+            ? notes.find(n => n.supabaseId === currentEditingNote.supabaseId)
+            : notes.find(n => n.id === currentEditingNote.id);
+          const target = liveNote || currentEditingNote;
+          target.title = title;
+          target.content = content;
+          target.color = currentNoteColor;
+          target.pinned = pinned;
+          target.modifiedAt = new Date().toISOString();
+          // If the note was orphaned (not in array), re-add it
+          if (!liveNote) notes.unshift(target);
         } else {
           const newNote = {
             id: Date.now(),
@@ -4001,13 +4009,11 @@
         const supabaseId = currentEditingNote.supabaseId;
 
         // Delete from Supabase FIRST so it doesn't reappear on next load
-        let supabaseDeleted = false;
         if (supabaseId && currentUser && supabaseClient) {
           try {
             const { error } = await supabaseClient.from('sticky_notes').delete().eq('id', supabaseId);
             if (error) {
               console.error('[stickyNotes] delete from Supabase failed:', error.message, error.code);
-              // Show red banner
               var b = document.getElementById('sticky-sync-error');
               if (!b) {
                 b = document.createElement('div');
@@ -4019,17 +4025,22 @@
               b.textContent = '⚠️ Delete failed: ' + error.message + ' (' + error.code + '). Note may reappear on refresh.';
             } else {
               console.log('[stickyNotes] deleted from Supabase:', supabaseId);
-              supabaseDeleted = true;
             }
           } catch (err) {
             console.error('[stickyNotes] delete error:', err.message);
           }
-        } else if (!supabaseId) {
-          console.warn('[stickyNotes] delete skipped — no supabaseId on note', noteId);
         }
 
-        // Remove from local state
-        notes = notes.filter(n => n.id !== noteId);
+        // Remove from local state — use supabaseId (stable) as primary key,
+        // fall back to ephemeral id. The float id can change when
+        // loadStickyNotesFromSupabase rebuilds the notes array while the
+        // edit modal is still open.
+        const beforeLen = notes.length;
+        notes = notes.filter(n =>
+          supabaseId ? n.supabaseId !== supabaseId : n.id !== noteId
+        );
+        console.log('[stickyNotes] local delete: removed', beforeLen - notes.length, 'note(s), supabaseId=', supabaseId, 'localId=', noteId);
+
         saveNotes();
         renderNotes();
         renderPinnedNotes();

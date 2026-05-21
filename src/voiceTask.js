@@ -99,7 +99,8 @@ async function parseTranscript(transcript) {
 
     let parsed;
     try {
-      parsed = JSON.parse(raw);
+      const cleanRaw = raw.replace(/^`{3}(json)?/im, '').replace(/`{3}$/im, '').trim();
+      parsed = JSON.parse(cleanRaw);
     } catch (e) {
       console.warn('[voiceTask] parseTranscript → invalid JSON, using fallback:', raw.substring(0, 60));
       return { title: capFirst(transcript), quadrant: 'do_first', fallback: true };
