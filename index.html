@@ -3453,6 +3453,32 @@
       let _stickySyncing = false;
       const STICKY_SYNC_DEBOUNCE_MS = 500;
 
+      // ── Sticky Notes Tombstones ────────────────────────────────────
+      // Tracks supabaseIds of notes the user deleted. Persisted to localStorage so
+      // the delete can be re-attempted on the next load if the original DELETE was
+      // cancelled (e.g. user refreshed the page before the request completed, or
+      // network glitched silently). Without this, the server keeps the row and
+      // loadStickyNotesFromSupabase() resurrects the note on next refresh.
+      const STICKY_TOMBSTONES_KEY = 'stickyNoteTombstones';
+      function getStickyTombstones() {
+        try {
+          const raw = localStorage.getItem(STICKY_TOMBSTONES_KEY);
+          return raw ? JSON.parse(raw) : [];
+        } catch { return []; }
+      }
+      function setStickyTombstones(ids) {
+        localStorage.setItem(STICKY_TOMBSTONES_KEY, JSON.stringify([...new Set(ids)]));
+      }
+      function addStickyTombstone(supabaseId) {
+        if (!supabaseId) return;
+        setStickyTombstones([...getStickyTombstones(), supabaseId]);
+      }
+      function removeStickyTombstones(supabaseIds) {
+        if (!supabaseIds || supabaseIds.length === 0) return;
+        const drop = new Set(supabaseIds);
+        setStickyTombstones(getStickyTombstones().filter(id => !drop.has(id)));
+      }
+
       let _stickyNoteIdCounter = 0;
       function mapRowToStickyNote(row) {
         return {
@@ -3478,11 +3504,46 @@
             .eq('user_id', currentUser.id)
             .order('updated_at', { ascending: false });
           if (error) throw error;
-          if (!data || data.length === 0) {
-            // Server returned zero rows — either never synced or all notes deleted.
-            // Only push local notes up if NONE of them have a supabaseId (truly
-            // unsynced). If they all have supabaseIds it means they were deleted
-            // server-side and we must respect that by clearing locals too.
+
+          let rows = data || [];
+
+          // ── Tombstone enforcement ──────────────────────────────────
+          // If we have pending deletes (e.g. the user deleted a note and refreshed
+          // before the DELETE request completed), the server may still have those
+          // rows. Re-fire the DELETE for any tombstoned IDs still present on the
+          // server, and exclude them from the local view so they don't resurrect.
+          const tombstones = getStickyTombstones();
+          if (tombstones.length > 0) {
+            const tombSet = new Set(tombstones);
+            const stillOnServer = rows.filter(r => tombSet.has(r.id)).map(r => r.id);
+            rows = rows.filter(r => !tombSet.has(r.id));
+
+            if (stillOnServer.length > 0) {
+              try {
+                const { error: delErr } = await supabaseClient
+                  .from('sticky_notes')
+                  .delete()
+                  .in('id', stillOnServer);
+                if (!delErr) {
+                  removeStickyTombstones(stillOnServer);
+                  console.log('[stickyNotes] re-deleted tombstoned notes:', stillOnServer);
+                }
+              } catch (e) {
+                console.warn('[stickyNotes] tombstone re-delete failed:', e);
+              }
+            }
+            // Clear tombstones for IDs that are already gone from the server —
+            // those deletes succeeded and the tombstone is no longer needed.
+            const stillOnServerSet = new Set(stillOnServer);
+            const settled = tombstones.filter(id => !stillOnServerSet.has(id));
+            if (settled.length > 0) removeStickyTombstones(settled);
+          }
+
+          if (rows.length === 0) {
+            // Server returned zero rows (after tombstone filtering) — either never
+            // synced or all notes deleted. Only push local notes up if NONE of them
+            // have a supabaseId (truly unsynced). If they all have supabaseIds it
+            // means they were deleted server-side and we must respect that.
             const hasUnsynced = notes.some(n => !n.supabaseId);
             const hasSynced   = notes.some(n =>  n.supabaseId);
             if (hasUnsynced && !hasSynced) {
@@ -3496,7 +3557,7 @@
             return;
           }
           const prevNotes = notes; // snapshot local notes before overwriting
-          notes = data.map(mapRowToStickyNote);
+          notes = rows.map(mapRowToStickyNote);
 
           // Merge: keep local-only (unsynced) notes + resolve conflicts by modifiedAt
           const serverNotes = notes;
@@ -4061,6 +4122,15 @@
 
         const noteId = currentEditingNote.id;
         const supabaseId = currentEditingNote.supabaseId;
+        // Capture the note for potential restore BEFORE closeNoteEditModal()
+        // nulls out currentEditingNote.
+        const noteSnapshot = currentEditingNote;
+
+        // Persist a tombstone BEFORE firing the network call. If the user refreshes
+        // (or loses network) before the DELETE completes, the next load will see
+        // the tombstone, re-fire the DELETE, and exclude the row from the local
+        // view so it doesn't resurrect.
+        if (supabaseId) addStickyTombstone(supabaseId);
 
         // Optimistic local delete BEFORE the async Supabase call.
         // This prevents a race where syncStickyNotesToSupabase() fires
@@ -4082,9 +4152,10 @@
             const { error } = await supabaseClient.from('sticky_notes').delete().eq('id', supabaseId);
             if (error) {
               console.error('[stickyNotes] delete from Supabase failed:', error.message, error.code);
-              // Restore the note so the user can see it and retry.
-              const restored = currentEditingNote;
-              notes.unshift(restored);
+              // Server rejected the delete (e.g. RLS) — restore the note locally
+              // and drop the tombstone since the user must retry.
+              removeStickyTombstones([supabaseId]);
+              notes.unshift(noteSnapshot);
               saveNotes();
               renderNotes();
               renderPinnedNotes();
@@ -4098,13 +4169,18 @@
               }
               b.textContent = '⚠️ Delete sync failed: ' + error.message + ' (' + error.code + '). Note restored — try again.';
             } else {
+              // Server confirmed delete — clear the tombstone.
+              removeStickyTombstones([supabaseId]);
               console.log('[stickyNotes] deleted from Supabase:', supabaseId);
             }
           } catch (err) {
             console.error('[stickyNotes] delete error:', err.message);
-            // Network error / offline — restore note locally so user can retry.
-            const restored = currentEditingNote;
-            notes.unshift(restored);
+            // Network error / offline — drop the tombstone and restore the note,
+            // since we caught the failure cleanly and the user can retry. (The
+            // tombstone is only meant to protect against silent cancellations
+            // like a page refresh mid-request, which don't run this catch block.)
+            removeStickyTombstones([supabaseId]);
+            notes.unshift(noteSnapshot);
             saveNotes();
             renderNotes();
             renderPinnedNotes();
