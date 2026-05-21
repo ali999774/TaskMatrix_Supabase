@@ -3838,6 +3838,20 @@
             recurDays: []
           };
           tasks.push(newTask);
+
+          // Write to Dexie IMMEDIATELY so the task survives refresh even
+          // if the Supabase sync hasn't completed yet. (saveTasks() only
+          // persists to Dexie AFTER successful Supabase sync.)
+          if (db) {
+            db.tasks.put({
+              localId: newTask.id,
+              supabaseId: null,
+              pendingSync: 1,
+              updatedAt: new Date().toISOString(),
+              data: JSON.stringify(newTask)
+            }).catch(e => console.warn('[quickAdd] Dexie persist failed:', e));
+          }
+
           input.value = '';
           render();
           updateStatsDisplay();
@@ -4230,7 +4244,7 @@
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
 
-        tasks.push({
+        const convertedTask = {
           id: Date.now(),
           title: taskTitle,
           category: 'personal',
@@ -4247,7 +4261,18 @@
           recurFrequency: '',
           recurInterval: 1,
           recurDays: []
-        });
+        };
+        tasks.push(convertedTask);
+
+        if (db) {
+          db.tasks.put({
+            localId: convertedTask.id,
+            supabaseId: null,
+            pendingSync: 1,
+            updatedAt: new Date().toISOString(),
+            data: JSON.stringify(convertedTask)
+          }).catch(e => console.warn('[convertNote] Dexie persist failed:', e));
+        }
 
         _pendingSaveTasksPromise = saveTasks();
         await _pendingSaveTasksPromise;
@@ -5266,6 +5291,17 @@
             modifiedAt: new Date().toISOString()
           };
           tasks.push(newTask);
+
+          // Write to Dexie IMMEDIATELY so the task survives refresh
+          if (db) {
+            db.tasks.put({
+              localId: newTask.id,
+              supabaseId: null,
+              pendingSync: 1,
+              updatedAt: new Date().toISOString(),
+              data: JSON.stringify(newTask)
+            }).catch(e => console.warn('[saveTaskDetails] Dexie persist failed:', e));
+          }
         }
 
         // FIX: close modal immediately so user isn't blocked, but
