@@ -3448,9 +3448,10 @@
       let _stickySyncing = false;
       const STICKY_SYNC_DEBOUNCE_MS = 500;
 
+      let _stickyNoteIdCounter = 0;
       function mapRowToStickyNote(row) {
         return {
-          id: notes.find(n => n.supabaseId === row.id)?.id ?? (Date.now() + Math.random()),
+          id: notes.find(n => n.supabaseId === row.id)?.id ?? (Date.now() + (++_stickyNoteIdCounter) + Math.random()),
           supabaseId: row.id,
           title: row.title || 'Untitled',
           content: row.content || '',
@@ -3833,7 +3834,7 @@
 
           const card = document.createElement('div');
           card.className = `note-card ${escapeHTML(note.color) || 'yellow'}`;
-          card.onclick = () => editNote(note.id);
+          card.onclick = () => editNote(note.supabaseId || note.id);
 
           const header = document.createElement('div');
           header.className = 'note-card-header';
@@ -3874,7 +3875,7 @@
 
           const card = document.createElement('div');
           card.className = `note-card ${escapeHTML(note.color) || 'yellow'}`;
-          card.onclick = () => editNote(note.id);
+          card.onclick = () => editNote(note.supabaseId || note.id);
 
           const header = document.createElement('div');
           header.className = 'note-card-header';
@@ -3922,7 +3923,9 @@
       }
 
       function editNote(noteId) {
-        const note = notes.find(n => n.id === noteId);
+        // noteId may be a supabaseId (UUID string) or a local float id.
+        // Prefer supabaseId lookup (stable across reloads) to avoid float id collisions.
+        const note = notes.find(n => n.supabaseId === noteId) || notes.find(n => n.id === noteId);
         if (!note) return;
 
         currentEditingNote = note;
