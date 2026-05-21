@@ -4028,16 +4028,32 @@
         const noteId = currentEditingNote.id;
         const supabaseId = currentEditingNote.supabaseId;
 
-        // Delete from Supabase FIRST so it doesn't reappear on next load.
-        // If the delete fails, DO NOT remove from local state — the note
-        // would silently disappear then resurrect on next refresh because
-        // loadStickyNotesFromSupabase() has no way to know it was deleted.
-        var deleteSucceeded = !supabaseId; // no supabaseId = never synced, safe to delete locally
+        // Optimistic local delete BEFORE the async Supabase call.
+        // This prevents a race where syncStickyNotesToSupabase() fires
+        // during the await (e.g. tab visibility change) and re-upserts the
+        // note back to Supabase, causing it to resurrect on next refresh.
+        const beforeLen = notes.length;
+        notes = notes.filter(n =>
+          supabaseId ? n.supabaseId !== supabaseId : n.id !== noteId
+        );
+        console.log('[stickyNotes] optimistic local delete: removed', beforeLen - notes.length, 'note(s), supabaseId=', supabaseId, 'localId=', noteId);
+        saveNotes();
+        renderNotes();
+        renderPinnedNotes();
+        closeNoteEditModal();
+
+        // Now delete from Supabase. If it fails, restore the note locally.
         if (supabaseId && currentUser && supabaseClient) {
           try {
             const { error } = await supabaseClient.from('sticky_notes').delete().eq('id', supabaseId);
             if (error) {
               console.error('[stickyNotes] delete from Supabase failed:', error.message, error.code);
+              // Restore the note so the user can see it and retry.
+              const restored = currentEditingNote;
+              notes.unshift(restored);
+              saveNotes();
+              renderNotes();
+              renderPinnedNotes();
               var b = document.getElementById('sticky-sync-error');
               if (!b) {
                 b = document.createElement('div');
@@ -4046,15 +4062,18 @@
                 b.onclick = function() { this.remove(); };
                 document.body.appendChild(b);
               }
-              b.textContent = '⚠️ Delete sync failed: ' + error.message + ' (' + error.code + '). Note kept — try again.';
-              // NOTE: fall through — deleteSucceeded stays false, note stays in local state
+              b.textContent = '⚠️ Delete sync failed: ' + error.message + ' (' + error.code + '). Note restored — try again.';
             } else {
               console.log('[stickyNotes] deleted from Supabase:', supabaseId);
-              deleteSucceeded = true;
             }
           } catch (err) {
             console.error('[stickyNotes] delete error:', err.message);
-            // Network error / offline — keep note locally, it'll sync when online
+            // Network error / offline — restore note locally so user can retry.
+            const restored = currentEditingNote;
+            notes.unshift(restored);
+            saveNotes();
+            renderNotes();
+            renderPinnedNotes();
             var b = document.getElementById('sticky-sync-error');
             if (!b) {
               b = document.createElement('div');
@@ -4063,30 +4082,9 @@
               b.onclick = function() { this.remove(); };
               document.body.appendChild(b);
             }
-            b.textContent = '⚠️ Delete failed (offline?): ' + err.message + '. Note kept — try again when online.';
+            b.textContent = '⚠️ Delete failed (offline?): ' + err.message + '. Note restored — try again when online.';
           }
         }
-
-        if (!deleteSucceeded) {
-          // Server delete failed — keep the note visible so the user knows
-          // it wasn't really deleted. The error banner explains why.
-          return;
-        }
-
-        // Remove from local state — use supabaseId (stable) as primary key,
-        // fall back to ephemeral id. The float id can change when
-        // loadStickyNotesFromSupabase rebuilds the notes array while the
-        // edit modal is still open.
-        const beforeLen = notes.length;
-        notes = notes.filter(n =>
-          supabaseId ? n.supabaseId !== supabaseId : n.id !== noteId
-        );
-        console.log('[stickyNotes] local delete: removed', beforeLen - notes.length, 'note(s), supabaseId=', supabaseId, 'localId=', noteId);
-
-        saveNotes();
-        renderNotes();
-        renderPinnedNotes();
-        closeNoteEditModal();
       }
 
       async function convertNoteToTask() {
