@@ -4168,8 +4168,8 @@
             if (error) {
               console.error('[stickyNotes] delete from Supabase failed:', error.message, error.code);
               // Server rejected the delete (e.g. RLS) — restore the note locally
-              // and drop the tombstone since the user must retry.
-              removeStickyTombstones([supabaseId]);
+              // but keep the tombstone. The tombstone enforcement will retry
+              // on next page load.
               notes.unshift(noteSnapshot);
               saveNotes();
               renderNotes();
@@ -4184,17 +4184,20 @@
               }
               b.textContent = '⚠️ Delete sync failed: ' + error.message + ' (' + error.code + '). Note restored — try again.';
             } else {
-              // Server confirmed delete — clear the tombstone.
-              removeStickyTombstones([supabaseId]);
-              console.log('[stickyNotes] deleted from Supabase:', supabaseId);
+              // Server confirmed delete — keep the tombstone as a safety net.
+              // It will be cleaned up by loadStickyNotesFromSupabase()'s
+              // tombstone enforcement only after the server confirms the row
+              // is truly gone. This prevents a race where an in-flight
+              // syncStickyNotesToSupabase() upsert re-creates the note after
+              // the explicit delete succeeded.
+              console.log('[stickyNotes] deleted from Supabase, tombstone retained:', supabaseId);
             }
           } catch (err) {
             console.error('[stickyNotes] delete error:', err.message);
-            // Network error / offline — drop the tombstone and restore the note,
-            // since we caught the failure cleanly and the user can retry. (The
-            // tombstone is only meant to protect against silent cancellations
-            // like a page refresh mid-request, which don't run this catch block.)
-            removeStickyTombstones([supabaseId]);
+            // Network error / offline — keep the tombstone. If the request
+            // was cancelled mid-flight, the server may still process it.
+            // The tombstone enforcement will clean up on next page load.
+            // Restore the note locally so the user can retry.
             notes.unshift(noteSnapshot);
             saveNotes();
             renderNotes();
