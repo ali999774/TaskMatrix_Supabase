@@ -3474,8 +3474,20 @@
             .order('updated_at', { ascending: false });
           if (error) throw error;
           if (!data || data.length === 0) {
-            // No server data — keep local notes and push them up
-            syncStickyNotesToSupabase();
+            // Server returned zero rows — either never synced or all notes deleted.
+            // Only push local notes up if NONE of them have a supabaseId (truly
+            // unsynced). If they all have supabaseIds it means they were deleted
+            // server-side and we must respect that by clearing locals too.
+            const hasUnsynced = notes.some(n => !n.supabaseId);
+            const hasSynced   = notes.some(n =>  n.supabaseId);
+            if (hasUnsynced && !hasSynced) {
+              // Genuinely never-synced local notes — push them up
+              syncStickyNotesToSupabase();
+            } else {
+              // Server deleted everything (or no notes exist) — clear local cache
+              notes = notes.filter(n => !n.supabaseId); // keep any truly local-only
+              saveNotes();
+            }
             return;
           }
           const prevNotes = notes; // snapshot local notes before overwriting
