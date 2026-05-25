@@ -2895,6 +2895,7 @@
               }
 
               // ── Single batch upsert (replaces per-row update/insert) ──
+              const taskMap = new Map(tasks.map(t => [t.id, t]))
               if (upsertPayload.length > 0) {
                 const { data, error } = await supabaseClient
                   .from('tasks')
@@ -2908,7 +2909,7 @@
                     const row = data[startIdx + i]
                     if (row?.id) {
                       newFlushTasks[i].supabaseId = row.id
-                      const memTask = tasks.find(t => t.id === newFlushTasks[i].id)
+                      const memTask = taskMap.get(newFlushTasks[i].id)
                       if (memTask) memTask.supabaseId = row.id
                     }
                   }
@@ -2918,7 +2919,7 @@
               // Bulk mark all pending rows as synced, with fresh data blobs
               if (pending.length > 0) {
                 await db.tasks.bulkPut(pending.map(r => {
-                  const task = tasks.find(t => t.id === r.localId)
+                  const task = taskMap.get(r.localId)
                   return {
                     localId: r.localId,
                     supabaseId: task?.supabaseId || r.supabaseId,
@@ -3056,28 +3057,33 @@
               position: t.position || 0
             }));
 
-            const toUpdate = tasks.filter(t => t.supabaseId).map(t => ({
-              id: t.supabaseId,
-              user_id: currentUser.id,
-              title: t.title,
-              notes: t.notes || '',
-              category: t.category || 'personal',
-              importance: t.importance,
-              urgency: t.urgency,
-              status: t.status,
-              due_date: t.dueDate || null,
-              due_time: t.dueTime || null,
-              estimated_duration: t.estimatedDuration || null,
-              recurring: t.recurring || false,
-              recur_frequency: t.recurFrequency || null,
-              recur_interval: t.recurInterval || 1,
-              recur_days: t.recurDays || [],
-              tags: t.tags || [],
-              subtasks: t.subtasks || [],
-              pinned: t.pinned || false,
-              position: t.position || 0,
-              updated_at: new Date().toISOString()
-            }));
+            const toUpdate = tasks.reduce((acc, t) => {
+              if (t.supabaseId) {
+                acc.push({
+                  id: t.supabaseId,
+                  user_id: currentUser.id,
+                  title: t.title,
+                  notes: t.notes || '',
+                  category: t.category || 'personal',
+                  importance: t.importance,
+                  urgency: t.urgency,
+                  status: t.status,
+                  due_date: t.dueDate || null,
+                  due_time: t.dueTime || null,
+                  estimated_duration: t.estimatedDuration || null,
+                  recurring: t.recurring || false,
+                  recur_frequency: t.recurFrequency || null,
+                  recur_interval: t.recurInterval || 1,
+                  recur_days: t.recurDays || [],
+                  tags: t.tags || [],
+                  subtasks: t.subtasks || [],
+                  pinned: t.pinned || false,
+                  position: t.position || 0,
+                  updated_at: new Date().toISOString()
+                });
+              }
+              return acc;
+            }, []);
 
             let allData = [];
 
