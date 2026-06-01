@@ -3563,6 +3563,7 @@
       let _stickyNotesSyncTimer = null;
       let _stickySyncing = false;
       const STICKY_SYNC_DEBOUNCE_MS = 500;
+      let _tmNotesDirty = false;
 
       // ── Sticky Notes Tombstones ────────────────────────────────────
       // Tracks supabaseIds of notes the user deleted. Persisted to localStorage so
@@ -3712,6 +3713,9 @@
 
       async function syncStickyNotesToSupabase() {
         if (!currentUser || !supabaseClient || _stickySyncing) return;
+        if (!_tmNotesDirty) return;
+        _tmNotesDirty = false;
+        setSyncState('syncing');
         _stickySyncing = true;
         try {
           const toUpsert = notes.map(n => ({
@@ -4250,6 +4254,7 @@
           notes.unshift(newNote);
         }
 
+        _tmNotesDirty = true;
         saveNotes();
         renderNotes();
         renderPinnedNotes();
@@ -4281,6 +4286,7 @@
           supabaseId ? n.supabaseId !== supabaseId : n.id !== noteId
         );
         console.log('[stickyNotes] optimistic local delete: removed', beforeLen - notes.length, 'note(s), supabaseId=', supabaseId, 'localId=', noteId);
+        _tmNotesDirty = true;
         saveNotes();
         renderNotes();
         renderPinnedNotes();
@@ -4296,6 +4302,7 @@
               // but keep the tombstone. The tombstone enforcement will retry
               // on next page load.
               notes.unshift(noteSnapshot);
+              _tmNotesDirty = true;
               saveNotes();
               renderNotes();
               renderPinnedNotes();
@@ -4324,6 +4331,7 @@
             // The tombstone enforcement will clean up on next page load.
             // Restore the note locally so the user can retry.
             notes.unshift(noteSnapshot);
+            _tmNotesDirty = true;
             saveNotes();
             renderNotes();
             renderPinnedNotes();
@@ -4657,6 +4665,7 @@
               notes = data.notes || [];
               saveTasks();
               saveStats();
+              _tmNotesDirty = true;
               saveNotes();
               render();
               updateStatsDisplay();
