@@ -154,6 +154,7 @@
       min-height: 100vh;
       padding-top: calc(70px + env(safe-area-inset-top));
       padding-bottom: max(24px, env(safe-area-inset-bottom));
+      overflow-x: hidden;
     }
 
     .container {
@@ -183,6 +184,7 @@
       max-width: 1280px;
       margin: 0 auto;
       display: flex;
+      flex-wrap: wrap;
       gap: 16px;
       align-items: center;
     }
@@ -605,13 +607,26 @@
         padding-right: max(12px, env(safe-area-inset-right));
       }
 
+      .zen-top-content {
+        gap: 8px;
+        justify-content: space-between;
+      }
+
       .zen-logo {
         font-size: 16px;
       }
 
       .quick-add-input {
-        min-width: 120px;
+        flex: 1 1 100%;
+        order: 3;
+        margin-top: 4px;
         font-size: 13px;
+        min-width: 0;
+      }
+
+      .zen-actions {
+        gap: 4px;
+        flex-wrap: wrap;
       }
 
       .floating-badges {
@@ -889,6 +904,17 @@
       -webkit-touch-callout: none;  /* suppress Copy/Look Up/Translate callout */
     }
 
+    .task *, .sortable-drag * {
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    .task input, .task textarea, .task [contenteditable] {
+      user-select: auto;
+      -webkit-user-select: auto;
+    }
+
 
     .task.work {
       border-left-color: var(--primary);
@@ -938,6 +964,7 @@
     .task-info {
       flex: 1;
       pointer-events: none;
+      min-width: 0;
     }
 
     /* date-toggle badges must stay clickable despite parent pointer-events:none */
@@ -952,6 +979,8 @@
 
     .task-title {
       font-weight: 500;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
 
     .task-title.completed {
@@ -3047,7 +3076,8 @@
 
           // Pull fresh server state only after all local changes have been pushed
           await loadTasksFromSupabase()
-          // Push/pull sticky notes — sync local edits then fetch cross-device updates
+          // Push/pull sticky notes — sync local edits then fetch cross-device updates.
+          // Use _saveNotesLocal inside load so the flush path never re-arms the sync timer.
           await syncStickyNotesToSupabase()
           await loadStickyNotesFromSupabase()
           renderNotes()
@@ -3617,7 +3647,7 @@
             .from('sticky_notes')
             .select('*')
             .eq('user_id', currentUser.id)
-            .order('updated_at', { ascending: false });
+            .order('created_at', { ascending: true });
           if (error) throw error;
 
           let rows = data || [];
@@ -3667,7 +3697,7 @@
             } else {
               // Server deleted everything (or no notes exist) — clear local cache
               notes = notes.filter(n => !n.supabaseId); // keep any truly local-only
-              saveNotes();
+              _saveNotesLocal(); // push local-only notes up, but don't re-arm sync (already syncing)
             }
             return;
           }
@@ -3689,13 +3719,15 @@
           }
 
           serverNotes.push(...localOnly);
+          // Sort: pinned first, then by stable creation order.
+          // Do NOT sort by modifiedAt — that changes every sync and causes reshuffling.
           serverNotes.sort((a, b) => {
             if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-            return new Date(b.modifiedAt || 0).getTime() - new Date(a.modifiedAt || 0).getTime();
+            return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
           });
 
           notes = serverNotes;
-          saveNotes(); // cache merged result to localStorage
+          _saveNotesLocal(); // cache merged result to localStorage (no sync — load is not a user action)
         } catch (err) {
           console.warn('[stickyNotes] load from Supabase failed, using localStorage:', err.message);
           // Show a subtle warning banner
@@ -3794,7 +3826,7 @@
           }
 
           if (synced > 0) {
-            localStorage.setItem('stickyNotes', JSON.stringify(notes));
+            _saveNotesLocal(); // update localStorage after successful upsert — no sync re-arm
             console.log('[stickyNotes] synced ' + synced + ' notes to Supabase');
             // Remove any error banner on success
             var banner = document.getElementById('sticky-sync-error');
@@ -3822,8 +3854,20 @@
         _stickyNotesSyncTimer = setTimeout(() => syncStickyNotesToSupabase(), STICKY_SYNC_DEBOUNCE_MS);
       }
 
-      function saveNotes() {
+      // _saveNotesLocal: write notes[] to localStorage ONLY.
+      // Must NEVER call scheduleStickyNotesSync() — that would re-arm an upsert
+      // on every load/merge cycle, creating the load→save→sync loop.
+      // Only genuine user actions (create, edit, delete, color) set _tmNotesDirty
+      // and call scheduleStickyNotesSync() explicitly.
+      function _saveNotesLocal() {
         localStorage.setItem('stickyNotes', JSON.stringify(notes));
+      }
+
+      // saveNotes: legacy alias kept for external callers (window._tmSaveNotes).
+      // Marks dirty and schedules sync — use ONLY for user-initiated changes.
+      function saveNotes() {
+        _saveNotesLocal();
+        _tmNotesDirty = true;
         if (currentUser && supabaseClient) scheduleStickyNotesSync();
       }
       window._tmSaveNotes = saveNotes;
@@ -4253,7 +4297,7 @@
           notes.unshift(newNote);
         }
 
-        _tmNotesDirty = true;
+        // saveNotes() already sets _tmNotesDirty and schedules sync — user action path.
         saveNotes();
         renderNotes();
         renderPinnedNotes();
@@ -4285,7 +4329,7 @@
           supabaseId ? n.supabaseId !== supabaseId : n.id !== noteId
         );
         console.log('[stickyNotes] optimistic local delete: removed', beforeLen - notes.length, 'note(s), supabaseId=', supabaseId, 'localId=', noteId);
-        _tmNotesDirty = true;
+        // saveNotes() already sets _tmNotesDirty and schedules sync — user action path.
         saveNotes();
         renderNotes();
         renderPinnedNotes();
