@@ -840,7 +840,11 @@
       position: relative;
       color: var(--text-primary);
       touch-action: manipulation;
+      user-select: none;            /* prevent text highlight during drag */
+      -webkit-user-select: none;    /* Safari / iOS WebKit */
+      -webkit-touch-callout: none;  /* suppress Copy/Look Up/Translate callout */
     }
+
 
     .task.work {
       border-left-color: var(--primary);
@@ -950,6 +954,25 @@
       text-align: center;
       color: var(--text-muted);
       padding: 32px;
+    }
+
+    /* ── Layout animations (presentation-only, no data layer) ───────── */
+    @media (prefers-reduced-motion: no-preference) {
+      @keyframes tm-enter {
+        from { opacity: 0; transform: scale(0.92) translateY(-6px); }
+        to   { opacity: 1; transform: scale(1)    translateY(0); }
+      }
+      @keyframes tm-exit {
+        from { opacity: 1; transform: scale(1); }
+        to   { opacity: 0; transform: scale(0.88); }
+      }
+      .tm-entering {
+        animation: tm-enter 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      .tm-exiting {
+        animation: tm-exit 0.15s ease-in forwards;
+        pointer-events: none;
+      }
     }
 
     button.pin-btn {
@@ -2555,6 +2578,21 @@
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#039;");
+      }
+
+      /**
+       * Haptic feedback — safe no-op on web, active on iOS native.
+       * Route ALL haptic calls through here; never call Capacitor directly.
+       * @param {function(Haptics): void} run  receives the Haptics plugin instance
+       */
+      function tmHaptic(run) {
+        try {
+          const C = window.Capacitor;
+          if (C && C.isNativePlatform && C.isNativePlatform() &&
+              C.Plugins && C.Plugins.Haptics) {
+            run(C.Plugins.Haptics);
+          }
+        } catch (e) { /* haptics are non-critical; never throw */ }
       }
 
       function handleTaskTouchStart(event, taskId) {
@@ -4337,11 +4375,13 @@
           if (task.status === 'todo') task.status = 'in-progress';
           else if (task.status === 'in-progress') {
             task.status = 'completed';
+            tmHaptic(h => h.notification({ type: 'SUCCESS' })); // satisfying completion buzz
             awardXP(task);
             if (task.recurring) {
               await createNextRecurrence(task);
             }
           }
+
           else task.status = 'todo';
           render();
           updateStatsDisplay();
@@ -4798,6 +4838,19 @@
           'eliminate': filteredTasks.filter(t => getQuad(t.importance, t.urgency) === 'eliminate')
         };
 
+        // ── FLIP: snapshot positions before any DOM mutation ──────────
+        const _flipContainers = ['do-first', 'schedule', 'delegate', 'eliminate']
+          .map(q => document.getElementById('tasks-' + q))
+          .filter(Boolean);
+        // Record which data-ids currently exist across all quadrants
+        const _flipOldIds = new Set(
+          _flipContainers.flatMap(c =>
+            [...c.querySelectorAll('[data-id]')].map(e => e.dataset.id)
+          )
+        );
+        _tmFlip.capture(_flipContainers);
+        // ─────────────────────────────────────────────────────────────
+
         ['do-first', 'schedule', 'delegate', 'eliminate'].forEach(quad => {
           const container = document.getElementById('tasks-' + quad);
           const countId = quad === 'do-first' ? 'count-first' : 'count-' + quad;
@@ -4808,8 +4861,20 @@
           count.textContent = sortedTasks.length;
 
           if (sortedTasks.length === 0) {
+            // Animate out any tasks that were in this quadrant
+            _tmFlip.exit([container], _flipOldIds);
             container.innerHTML = '<div class="empty-state">Drag tasks here</div>';
           } else {
+            // Compute which IDs are leaving this container
+            const newTaskIds = new Set(sortedTasks.map(t => String(t.id)));
+            const removedFromHere = new Set(
+              [...container.querySelectorAll('[data-id]')]
+                .map(e => e.dataset.id)
+                .filter(id => !newTaskIds.has(id))
+            );
+            // Exit animation: clone & fade elements BEFORE innerHTML wipes them
+            _tmFlip.exit([container], removedFromHere);
+
             container.innerHTML = sortedTasks.map(task => {
               const statusIcon = task.status === 'completed' ? '✓' : task.status === 'in-progress' ? '⏱' : '○';
               const statusColor = task.status === 'completed' ? '#16a34a' : task.status === 'in-progress' ? '#3b82f6' : '#9ca3af';
@@ -4884,6 +4949,12 @@
               </div>
             </div>`;
             }).join('');
+
+            // FLIP play: reorder existing tasks + enter-animate new ones
+            const addedIds = new Set(
+              sortedTasks.map(t => String(t.id)).filter(id => !_flipOldIds.has(id))
+            );
+            _tmFlip.play([container], addedIds);
           }
         });
 
@@ -4893,6 +4964,7 @@
 
         initSortable();
       }
+
 
       async function handleSortableEnd(evt) {
         const itemEl = evt.item;
@@ -4960,6 +5032,10 @@
            }
 
            if (evt.from !== evt.to) {
+               // Light tick on cross-quadrant drop; skip when user prefers reduced motion
+               if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                 tmHaptic(h => h.impact({ style: 'LIGHT' }));
+               }
                // Update from quadrant count
                const fromQuad = evt.from.id.replace('tasks-', '');
                const fromCountId = fromQuad === 'do-first' ? 'count-first' : 'count-' + fromQuad;
@@ -4992,11 +5068,20 @@
             delayOnTouchOnly: true,
             forceFallback: true,
             fallbackClass: 'sortable-drag',
-            onEnd: handleSortableEnd
+            // Disable FLIP during drag so it doesn't fight SortableJS transforms
+            onStart: () => {
+              _tmDragging = true;
+              // Light tick on drag pickup; skip when user prefers reduced motion
+              if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                tmHaptic(h => h.impact({ style: 'LIGHT' }));
+              }
+            },
+            onEnd: (evt) => { _tmDragging = false; handleSortableEnd(evt); }
           });
           sortableInstances.push(instance);
         });
       }
+
 
       // ── Fix 1: Inline date picker functions ─────────────────────
       function toggleDatePicker(taskId) {
@@ -5856,7 +5941,106 @@
           Notification.requestPermission()
         }
       }
+
+      // ── FLIP animation engine (presentation-only) ────────────────────
+      // Tracks element positions before/after innerHTML swaps and plays
+      // FLIP animations.  Never touches tasks[], Supabase, or Dexie.
+      const _tmFlip = {
+        _prev: new Map(), // data-id → DOMRect
+
+        /** Call before innerHTML is replaced. Snapshots current positions. */
+        capture(containers) {
+          this._prev.clear();
+          for (const c of containers) {
+            for (const el of c.querySelectorAll('[data-id]')) {
+              this._prev.set(el.dataset.id, el.getBoundingClientRect());
+            }
+          }
+        },
+
+        /**
+         * Animate elements that are about to be removed (before innerHTML swap).
+         * Clones the element, fixes it in viewport coords, and fades it out.
+         * @param {Element[]} containers
+         * @param {Set<string>} removedIds
+         */
+        exit(containers, removedIds) {
+          if (!removedIds.size) return;
+          const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+          if (reduced) return;
+          for (const c of containers) {
+            for (const el of c.querySelectorAll('[data-id]')) {
+              if (!removedIds.has(el.dataset.id)) continue;
+              const rect = el.getBoundingClientRect();
+              const clone = el.cloneNode(true);
+              Object.assign(clone.style, {
+                position:      'fixed',
+                top:           rect.top  + 'px',
+                left:          rect.left + 'px',
+                width:         rect.width  + 'px',
+                height:        rect.height + 'px',
+                margin:        '0',
+                zIndex:        '9998',
+                pointerEvents: 'none',
+                boxSizing:     'border-box'
+              });
+              clone.classList.add('tm-exiting');
+              document.body.appendChild(clone);
+              clone.addEventListener('animationend', () => clone.remove(), { once: true });
+              // Failsafe: remove after 300ms even if animationend never fires
+              setTimeout(() => clone.remove(), 300);
+            }
+          }
+        },
+
+        /**
+         * Call AFTER innerHTML has been replaced.
+         * Plays FLIP reorder for moved elements, enter animation for new elements.
+         * Skips all animation while a SortableJS drag is in flight.
+         * @param {Element[]} containers
+         * @param {Set<string>} newIds  IDs that did not exist before the render
+         */
+        play(containers, newIds) {
+          if (_tmDragging) return;
+          const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+          for (const c of containers) {
+            for (const el of c.querySelectorAll('[data-id]')) {
+              const id = el.dataset.id;
+              if (newIds.has(id)) {
+                // Enter: CSS handles it via .tm-entering, only add the class
+                if (!reduced) {
+                  el.classList.add('tm-entering');
+                  el.addEventListener('animationend',
+                    () => el.classList.remove('tm-entering'), { once: true });
+                }
+                continue;
+              }
+              // FLIP: move element from old pos to new pos
+              const old = this._prev.get(id);
+              if (!old) continue;
+              const now = el.getBoundingClientRect();
+              const dx = old.left - now.left;
+              const dy = old.top  - now.top;
+              if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+              if (!reduced) {
+                el.animate(
+                  [
+                    { transform: `translate(${dx}px,${dy}px)` },
+                    { transform: 'translate(0,0)' }
+                  ],
+                  { duration: 220, easing: 'cubic-bezier(0.25,0.46,0.45,0.94)', fill: 'none' }
+                );
+              }
+            }
+          }
+        }
+      };
+
+      /** Set to true while SortableJS has a drag active.
+       *  Prevents FLIP from fighting the drag library's transform. */
+      let _tmDragging = false;
     </script>
+
 
     <!-- ── Debug Panel (activate with ?debug=1) ──────────────────── -->
     <div id="tm-debug-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;max-height:40vh;background:#1e293b;color:#e2e8f0;font-family:monospace;font-size:12px;z-index:99999;overflow-y:auto;border-top:2px solid #6366f1;padding:12px;">
