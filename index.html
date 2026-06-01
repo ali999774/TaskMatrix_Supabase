@@ -707,6 +707,43 @@
       border-color: var(--quad-gray-border);
     }
 
+    /* Focus Mode */
+    .matrix.tm-focus-active {
+      display: flex;
+      flex-direction: column;
+    }
+    .matrix.tm-focus-active .quadrant {
+      display: none;
+    }
+    .matrix.tm-focus-active .quadrant.tm-quadrant-focused {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 60vh;
+    }
+    @media (min-width: 601px) {
+      .matrix.tm-focus-active .quadrant.tm-quadrant-focused {
+        min-height: 75vh;
+      }
+    }
+    .quadrant-focus-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      transition: background 0.2s;
+    }
+    .quadrant-focus-btn:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
     .quad-header {
       padding: 16px;
       font-weight: bold;
@@ -2179,6 +2216,7 @@
           <div class="quad-header red">
             <span>Do First 🔥</span>
             <div style="display:flex; align-items:center; gap:8px;">
+              <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
               <span id="count-first" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('do-first', event)">⋮</button>
@@ -2200,6 +2238,7 @@
           <div class="quad-header blue">
             <span>Schedule 📅</span>
             <div style="display:flex; align-items:center; gap:8px;">
+              <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
               <span id="count-schedule" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('schedule', event)">⋮</button>
@@ -2221,6 +2260,7 @@
           <div class="quad-header yellow">
             <span>Delegate 🤝</span>
             <div style="display:flex; align-items:center; gap:8px;">
+              <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
               <span id="count-delegate" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('delegate', event)">⋮</button>
@@ -2242,6 +2282,7 @@
           <div class="quad-header gray">
             <span>Eliminate 🗑️</span>
             <div style="display:flex; align-items:center; gap:8px;">
+              <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
               <span id="count-eliminate" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('eliminate', event)">⋮</button>
@@ -4798,6 +4839,37 @@
           }
         } finally { localChangeInFlight = false; }
       }
+
+      let _tmFocusedQuadrant = null;
+
+      function toggleFocusMode(buttonElem) {
+        const matrix = document.querySelector('.matrix');
+        const quadrant = buttonElem.closest('.quadrant');
+        
+        if (matrix.classList.contains('tm-focus-active')) {
+          // Exit focus mode
+          matrix.classList.remove('tm-focus-active');
+          document.querySelectorAll('.tm-quadrant-focused').forEach(q => q.classList.remove('tm-quadrant-focused'));
+          document.querySelectorAll('.quadrant-focus-btn').forEach(btn => btn.textContent = '⛶');
+          _tmFocusedQuadrant = null;
+        } else {
+          // Enter focus mode
+          matrix.classList.add('tm-focus-active');
+          quadrant.classList.add('tm-quadrant-focused');
+          buttonElem.textContent = '✖';
+          _tmFocusedQuadrant = quadrant;
+          
+          // Scroll to top to ensure focused quadrant is fully visible
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && _tmFocusedQuadrant) {
+          const activeBtn = _tmFocusedQuadrant.querySelector('.quadrant-focus-btn');
+          if (activeBtn) toggleFocusMode(activeBtn);
+        }
+      });
 
       function toggleSortDropdown(quad, event) {
         event.stopPropagation();
