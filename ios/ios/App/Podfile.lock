@@ -1,0 +1,34 @@
+PODS:
+  - AparajitaCapacitorBiometricAuth (8.0.2):
+    - Capacitor
+  - Capacitor (6.2.1):
+    - CapacitorCordova
+  - CapacitorCordova (6.2.1)
+  - CapacitorHaptics (6.0.3):
+    - Capacitor
+
+DEPENDENCIES:
+  - "AparajitaCapacitorBiometricAuth (from `../../node_modules/@aparajita/capacitor-biometric-auth`)"
+  - "Capacitor (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorHaptics (from `../../node_modules/@capacitor/haptics`)"
+
+EXTERNAL SOURCES:
+  AparajitaCapacitorBiometricAuth:
+    :path: "../../node_modules/@aparajita/capacitor-biometric-auth"
+  Capacitor:
+    :path: "../../node_modules/@capacitor/ios"
+  CapacitorCordova:
+    :path: "../../node_modules/@capacitor/ios"
+  CapacitorHaptics:
+    :path: "../../node_modules/@capacitor/haptics"
+
+SPEC CHECKSUMS:
+  AparajitaCapacitorBiometricAuth: c058563fe00160e12b022341e11b3181357ea93a
+  Capacitor: c95400d761e376be9da6be5a05f226c0e865cebf
+  CapacitorCordova: 8d93e14982f440181be7304aa9559ca631d77fff
+  CapacitorHaptics: 40f83026feeee9cfe36e89e9c98a3baaaf20c450
+
+PODFILE CHECKSUM: 186d7db072905da89afabae3e5cac0a3120d03b1
+
+COCOAPODS: 1.16.2

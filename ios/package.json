@@ -1,0 +1,20 @@
+{
+  "name": "taskmatrix-ios",
+  "version": "1.0.0",
+  "description": "TaskMatrix — Eisenhower Matrix PWA wrapped for iOS",
+  "private": true,
+  "scripts": {
+    "ios": "npx cap sync ios && npx cap open ios",
+    "build": "npx cap sync ios"
+  },
+  "dependencies": {
+    "@aparajita/capacitor-biometric-auth": "^8.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/haptics": "^6.0.0",
+    "@capacitor/ios": "^6.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
