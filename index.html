@@ -16,7 +16,7 @@
   <script src="src/voiceTask.js"></script>
   <script src="src/voice-recorder.js"></script>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>TaskMatrix</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6366f1">
@@ -152,14 +152,15 @@
       background: var(--bg-body);
       color: var(--text-primary);
       min-height: 100vh;
-      padding-top: 70px;
-      padding-bottom: 24px;
+      padding-top: calc(70px + env(safe-area-inset-top));
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
     }
 
     .container {
       max-width: 1280px;
       margin: 0 auto;
-      padding: 0 24px;
+      padding-left: max(24px, env(safe-area-inset-left));
+      padding-right: max(24px, env(safe-area-inset-right));
     }
 
     /* Top Bar */
@@ -172,7 +173,10 @@
       backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--border-color);
       z-index: 100;
-      padding: 12px 24px;
+      padding-top: max(12px, env(safe-area-inset-top));
+      padding-bottom: 12px;
+      padding-left: max(24px, env(safe-area-inset-left));
+      padding-right: max(24px, env(safe-area-inset-right));
     }
 
     .zen-top-content {
@@ -333,8 +337,8 @@
     /* Floating Badges */
     .floating-badges {
       position: fixed;
-      bottom: 120px;
-      right: 24px;
+      bottom: max(120px, calc(100px + env(safe-area-inset-bottom)));
+      right: max(24px, env(safe-area-inset-right));
       display: flex;
       flex-direction: column;
       gap: 12px;
@@ -343,8 +347,8 @@
 
     @media (max-width: 768px) {
       .floating-badges {
-        bottom: 16px;
-        right: 16px;
+        bottom: max(16px, env(safe-area-inset-bottom));
+        right: max(16px, env(safe-area-inset-right));
         gap: 10px;
       }
     }
@@ -387,8 +391,8 @@
       }
 
       .floating-badges {
-        bottom: 16px;
-        right: 16px;
+        bottom: max(16px, env(safe-area-inset-bottom));
+        right: max(16px, env(safe-area-inset-right));
         gap: 10px;
       }
     }
@@ -396,8 +400,8 @@
     /* Stats Popup */
     .stats-popup {
       position: fixed;
-      bottom: 100px;
-      right: 24px;
+      bottom: max(100px, calc(80px + env(safe-area-inset-bottom)));
+      right: max(24px, env(safe-area-inset-right));
       background: var(--bg-card);
       border-radius: 12px;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
@@ -595,7 +599,10 @@
       }
 
       .zen-top-bar {
-        padding: 8px 12px;
+        padding-top: max(8px, env(safe-area-inset-top));
+        padding-bottom: 8px;
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
       }
 
       .zen-logo {
@@ -608,8 +615,8 @@
       }
 
       .floating-badges {
-        bottom: 12px;
-        right: 12px;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        right: max(12px, env(safe-area-inset-right));
       }
 
       #context-switcher {
@@ -1111,7 +1118,7 @@
       align-items: center;
       justify-content: center;
       z-index: 1000;
-      padding: 16px;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     }
 
     .notes-modal.active {
@@ -1295,6 +1302,7 @@
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     }
 
     .note-edit-modal.active {
@@ -1445,7 +1453,7 @@
       align-items: center;
       justify-content: center;
       z-index: 1000;
-      padding: 16px;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
       opacity: 0;
       pointer-events: none;
     }
@@ -1764,8 +1772,8 @@
 
     .pomodoro-popup {
       position: fixed;
-      bottom: 100px;
-      right: 24px;
+      bottom: max(100px, calc(80px + env(safe-area-inset-bottom)));
+      right: max(24px, env(safe-area-inset-right));
       background: var(--bg-card);
       border-radius: 16px;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
@@ -1812,6 +1820,30 @@
       .notes-col {
         width: 100%;
       }
+    }
+
+    /* ── iOS Safe Area Overlay Overrides ────────────────── */
+    #quick-add-tray {
+      top: calc(58px + env(safe-area-inset-top)) !important;
+    }
+
+    #session-expired-banner,
+    #migration-banner {
+      top: calc(70px + env(safe-area-inset-top)) !important;
+    }
+
+    .voice-toast,
+    #voice-toast {
+      bottom: max(24px, env(safe-area-inset-bottom)) !important;
+    }
+
+    #sticky-sync-error {
+      bottom: max(16px, env(safe-area-inset-bottom)) !important;
+      right: max(16px, env(safe-area-inset-right)) !important;
+    }
+
+    #tm-debug-panel {
+      padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
     }
   </style>
 </head>
