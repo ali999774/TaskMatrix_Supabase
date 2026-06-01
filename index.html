@@ -3715,7 +3715,6 @@
         if (!currentUser || !supabaseClient || _stickySyncing) return;
         if (!_tmNotesDirty) return;
         _tmNotesDirty = false;
-        setSyncState('syncing');
         _stickySyncing = true;
         try {
           const toUpsert = notes.map(n => ({
@@ -3795,7 +3794,7 @@
           }
 
           if (synced > 0) {
-            saveNotes();
+            localStorage.setItem('stickyNotes', JSON.stringify(notes));
             console.log('[stickyNotes] synced ' + synced + ' notes to Supabase');
             // Remove any error banner on success
             var banner = document.getElementById('sticky-sync-error');
