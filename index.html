@@ -805,9 +805,9 @@
       z-index: 300;
       padding: 6px;
       display: none;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 4px;
-      min-width: 180px;
+      min-width: 140px;
     }
 
     .quadrant-popover.show {
@@ -4865,6 +4865,9 @@
       }
 
       document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          document.querySelectorAll('.quadrant-popover.show').forEach(p => p.classList.remove('show'));
+        }
         if (e.key === 'Escape' && _tmFocusedQuadrant) {
           const activeBtn = _tmFocusedQuadrant.querySelector('.quadrant-focus-btn');
           if (activeBtn) toggleFocusMode(activeBtn);
@@ -5043,10 +5046,10 @@
                 <div style="position:relative;">
                   <button class="quadrant-move-btn" onclick="toggleQuadrantPopover(${task.id}, event)" title="Move to quadrant">⊞</button>
                   <div class="quadrant-popover" id="qpop-${task.id}">
-                    <button class="quad-option red"    onclick="moveTaskToQuadrant(${task.id},'do-first',event)">🔴 Do First</button>
-                    <button class="quad-option blue"   onclick="moveTaskToQuadrant(${task.id},'schedule',event)">🔵 Schedule</button>
-                    <button class="quad-option yellow" onclick="moveTaskToQuadrant(${task.id},'delegate',event)">🟡 Delegate</button>
-                    <button class="quad-option gray"   onclick="moveTaskToQuadrant(${task.id},'eliminate',event)">⚪ Eliminate</button>
+                    ${quad !== 'do-first'  ? `<button class="quad-option red"    onclick="moveTaskToQuadrant(${task.id},'do-first',event)">🔴 Do First</button>` : ''}
+                    ${quad !== 'schedule'  ? `<button class="quad-option blue"   onclick="moveTaskToQuadrant(${task.id},'schedule',event)">🔵 Schedule</button>` : ''}
+                    ${quad !== 'delegate'  ? `<button class="quad-option yellow" onclick="moveTaskToQuadrant(${task.id},'delegate',event)">🟡 Delegate</button>` : ''}
+                    ${quad !== 'eliminate' ? `<button class="quad-option gray"   onclick="moveTaskToQuadrant(${task.id},'eliminate',event)">⚪ Eliminate</button>` : ''}
                   </div>
                 </div>
                 <button class="icon-btn" onclick="event.stopPropagation(); deleteTask(${task.id})">×</button>
@@ -5269,8 +5272,11 @@
           'delegate': { importance: 2, urgency: 5 },
           'eliminate': { importance: 2, urgency: 2 }
         }
-        const oldQuadrant = getQuad(task.importance, task.urgency);
         Object.assign(task, quadMap[quadrant])
+        document.querySelectorAll('.quadrant-popover.show').forEach(p => p.classList.remove('show'))
+        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          tmHaptic(h => h.impact({ style: 'LIGHT' }))
+        }
         saveTasks()
         render()
       }
