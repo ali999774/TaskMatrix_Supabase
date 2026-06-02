@@ -1,5 +1,3 @@
-shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
-chdir: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
 name: Deploy to GitHub Pages
 
 on:
