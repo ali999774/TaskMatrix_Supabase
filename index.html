@@ -3592,7 +3592,7 @@
       // ── Sticky Notes Supabase Sync ────────────────────────────
       let _stickyNotesSyncTimer = null;
       let _stickySyncing = false;
-      const STICKY_SYNC_DEBOUNCE_MS = 500;
+      const STICKY_SYNC_DEBOUNCE_MS = 2000;
       let _tmNotesDirty = false;
 
       // ── Sticky Notes Tombstones ────────────────────────────────────
@@ -3746,7 +3746,6 @@
       async function syncStickyNotesToSupabase() {
         if (!currentUser || !supabaseClient || _stickySyncing) return;
         if (!_tmNotesDirty) return;
-        _tmNotesDirty = false;
         _stickySyncing = true;
         try {
           const toUpsert = notes.map(n => ({
@@ -3825,6 +3824,7 @@
             }
           }
 
+          _tmNotesDirty = false; // reset only after all network calls succeeded
           if (synced > 0) {
             _saveNotesLocal(); // update localStorage after successful upsert — no sync re-arm
             console.log('[stickyNotes] synced ' + synced + ' notes to Supabase');
@@ -3833,6 +3833,7 @@
             if (banner) banner.remove();
           }
         } catch (err) {
+          _tmNotesDirty = true; // restore so the next scheduled sync will retry
           console.error('[stickyNotes] sync to Supabase failed:', err.message);
           // Show visible error banner so user knows sync is broken
           var banner = document.getElementById('sticky-sync-error');
