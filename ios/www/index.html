@@ -16,12 +16,7 @@
   <script src="src/voiceTask.js"></script>
   <script src="src/voice-recorder.js"></script>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#3b82f6">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- capacitor.js injected by Capacitor runtime -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <title>TaskMatrix</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#6366f1">
@@ -157,14 +152,17 @@
       background: var(--bg-body);
       color: var(--text-primary);
       min-height: 100vh;
-      padding-top: 70px;
-      padding-bottom: 24px;
+      padding-top: calc(70px + env(safe-area-inset-top));
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+      overflow-x: hidden;
+      overscroll-behavior-y: none;
     }
 
     .container {
       max-width: 1280px;
       margin: 0 auto;
-      padding: 0 24px;
+      padding-left: max(24px, env(safe-area-inset-left));
+      padding-right: max(24px, env(safe-area-inset-right));
     }
 
     /* Top Bar */
@@ -177,13 +175,17 @@
       backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--border-color);
       z-index: 100;
-      padding: 12px 24px;
+      padding-top: max(12px, env(safe-area-inset-top));
+      padding-bottom: 12px;
+      padding-left: max(24px, env(safe-area-inset-left));
+      padding-right: max(24px, env(safe-area-inset-right));
     }
 
     .zen-top-content {
       max-width: 1280px;
       margin: 0 auto;
       display: flex;
+      flex-wrap: wrap;
       gap: 16px;
       align-items: center;
     }
@@ -202,7 +204,7 @@
       background: var(--bg-card);
       color: var(--text-primary);
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 16px;
       min-width: 200px;
     }
 
@@ -338,8 +340,8 @@
     /* Floating Badges */
     .floating-badges {
       position: fixed;
-      bottom: 120px;
-      right: 24px;
+      bottom: max(120px, calc(100px + env(safe-area-inset-bottom)));
+      right: max(24px, env(safe-area-inset-right));
       display: flex;
       flex-direction: column;
       gap: 12px;
@@ -348,8 +350,8 @@
 
     @media (max-width: 768px) {
       .floating-badges {
-        bottom: 16px;
-        right: 16px;
+        bottom: max(16px, env(safe-area-inset-bottom));
+        right: max(16px, env(safe-area-inset-right));
         gap: 10px;
       }
     }
@@ -392,8 +394,8 @@
       }
 
       .floating-badges {
-        bottom: 16px;
-        right: 16px;
+        bottom: max(16px, env(safe-area-inset-bottom));
+        right: max(16px, env(safe-area-inset-right));
         gap: 10px;
       }
     }
@@ -401,8 +403,8 @@
     /* Stats Popup */
     .stats-popup {
       position: fixed;
-      bottom: 100px;
-      right: 24px;
+      bottom: max(100px, calc(80px + env(safe-area-inset-bottom)));
+      right: max(24px, env(safe-area-inset-right));
       background: var(--bg-card);
       border-radius: 12px;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
@@ -600,7 +602,15 @@
       }
 
       .zen-top-bar {
-        padding: 8px 12px;
+        padding-top: max(8px, env(safe-area-inset-top));
+        padding-bottom: 8px;
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
+      }
+
+      .zen-top-content {
+        gap: 8px;
+        justify-content: space-between;
       }
 
       .zen-logo {
@@ -608,13 +618,21 @@
       }
 
       .quick-add-input {
-        min-width: 120px;
-        font-size: 13px;
+        flex: 1 1 100%;
+        order: 3;
+        margin-top: 4px;
+        font-size: 16px;
+        min-width: 0;
+      }
+
+      .zen-actions {
+        gap: 4px;
+        flex-wrap: wrap;
       }
 
       .floating-badges {
-        bottom: 12px;
-        right: 12px;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        right: max(12px, env(safe-area-inset-right));
       }
 
       #context-switcher {
@@ -705,6 +723,43 @@
       border-color: var(--quad-gray-border);
     }
 
+    /* Focus Mode */
+    .matrix.tm-focus-active {
+      display: flex;
+      flex-direction: column;
+    }
+    .matrix.tm-focus-active .quadrant {
+      display: none;
+    }
+    .matrix.tm-focus-active .quadrant.tm-quadrant-focused {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 60vh;
+    }
+    @media (min-width: 601px) {
+      .matrix.tm-focus-active .quadrant.tm-quadrant-focused {
+        min-height: 75vh;
+      }
+    }
+    .quadrant-focus-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      transition: background 0.2s;
+    }
+    .quadrant-focus-btn:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
     .quad-header {
       padding: 16px;
       font-weight: bold;
@@ -766,9 +821,9 @@
       z-index: 300;
       padding: 6px;
       display: none;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 4px;
-      min-width: 180px;
+      min-width: 140px;
     }
 
     .quadrant-popover.show {
@@ -845,7 +900,22 @@
       position: relative;
       color: var(--text-primary);
       touch-action: manipulation;
+      user-select: none;            /* prevent text highlight during drag */
+      -webkit-user-select: none;    /* Safari / iOS WebKit */
+      -webkit-touch-callout: none;  /* suppress Copy/Look Up/Translate callout */
     }
+
+    .task *, .sortable-drag * {
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    .task input, .task textarea, .task [contenteditable] {
+      user-select: auto;
+      -webkit-user-select: auto;
+    }
+
 
     .task.work {
       border-left-color: var(--primary);
@@ -895,6 +965,7 @@
     .task-info {
       flex: 1;
       pointer-events: none;
+      min-width: 0;
     }
 
     /* date-toggle badges must stay clickable despite parent pointer-events:none */
@@ -909,6 +980,8 @@
 
     .task-title {
       font-weight: 500;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
 
     .task-title.completed {
@@ -955,6 +1028,25 @@
       text-align: center;
       color: var(--text-muted);
       padding: 32px;
+    }
+
+    /* ── Layout animations (presentation-only, no data layer) ───────── */
+    @media (prefers-reduced-motion: no-preference) {
+      @keyframes tm-enter {
+        from { opacity: 0; transform: scale(0.92) translateY(-6px); }
+        to   { opacity: 1; transform: scale(1)    translateY(0); }
+      }
+      @keyframes tm-exit {
+        from { opacity: 1; transform: scale(1); }
+        to   { opacity: 0; transform: scale(0.88); }
+      }
+      .tm-entering {
+        animation: tm-enter 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      .tm-exiting {
+        animation: tm-exit 0.15s ease-in forwards;
+        pointer-events: none;
+      }
     }
 
     button.pin-btn {
@@ -1093,7 +1185,7 @@
       align-items: center;
       justify-content: center;
       z-index: 1000;
-      padding: 16px;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     }
 
     .notes-modal.active {
@@ -1222,7 +1314,7 @@
       padding: 12px 16px;
       border: 2px solid var(--border-input);
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 16px;
       width: 100%;
       margin-top: 16px;
       background: var(--bg-card);
@@ -1277,6 +1369,7 @@
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     }
 
     .note-edit-modal.active {
@@ -1331,7 +1424,7 @@
       background: var(--bg-card);
       color: var(--text-primary);
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 16px;
       min-height: 200px;
       resize: vertical;
       font-family: inherit;
@@ -1427,7 +1520,7 @@
       align-items: center;
       justify-content: center;
       z-index: 1000;
-      padding: 16px;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
       opacity: 0;
       pointer-events: none;
     }
@@ -1514,7 +1607,7 @@
       background: var(--bg-card);
       color: var(--text-primary);
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 16px;
       min-height: 100px;
       resize: vertical;
       font-family: inherit;
@@ -1604,6 +1697,7 @@
       flex: 1;
       min-width: 100px;
       padding: 4px;
+      font-size: 16px;
     }
 
     .subtask-list {
@@ -1746,8 +1840,8 @@
 
     .pomodoro-popup {
       position: fixed;
-      bottom: 100px;
-      right: 24px;
+      bottom: max(100px, calc(80px + env(safe-area-inset-bottom)));
+      right: max(24px, env(safe-area-inset-right));
       background: var(--bg-card);
       border-radius: 16px;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
@@ -1795,28 +1889,283 @@
         width: 100%;
       }
     }
-  
-  /* ── Face ID Unlock Overlay ── */
-      #faceid-overlay {
-        position: fixed; inset: 0; z-index: 99999;
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        transition: opacity 0.4s ease;
+
+    /* ── iOS Safe Area Overlay Overrides ────────────────── */
+    #quick-add-tray {
+      top: calc(58px + env(safe-area-inset-top)) !important;
+    }
+
+    #session-expired-banner,
+    #migration-banner {
+      top: calc(70px + env(safe-area-inset-top)) !important;
+    }
+
+    .voice-toast,
+    #voice-toast {
+      bottom: max(24px, env(safe-area-inset-bottom)) !important;
+    }
+
+    #sticky-sync-error {
+      bottom: max(16px, env(safe-area-inset-bottom)) !important;
+      right: max(16px, env(safe-area-inset-right)) !important;
+    }
+
+    #tm-debug-panel {
+      padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+    }
+
+    /* ── Floating badges — removed on all widths ─────────────── */
+    .floating-badges {
+      display: none !important;
+    }
+
+    /* ── Compact layout ( < 700px ) ─────────────────────────── */
+    :root {
+      --dock-h: 64px;
+    }
+
+    /* === Wide ( ≥ 700px ): nothing changes, dock hidden === */
+    .compact-dock,
+    .compact-more-sheet,
+    .compact-more-overlay {
+      display: none;
+    }
+
+    @media (max-width: 700px) {
+
+      /* Body: reserve space for taller compact top bar + dock */
+      body {
+        padding-top: calc(110px + env(safe-area-inset-top));
+        padding-bottom: calc(var(--dock-h) + env(safe-area-inset-bottom) + 16px);
       }
-      #faceid-overlay.unlocked { opacity: 0; pointer-events: none; }
-      #faceid-overlay .logo { font-size: 64px; margin-bottom: 24px; }
-      #faceid-overlay .title { font-size: 24px; font-weight: 700; color: #f8fafc; margin-bottom: 8px; }
-      #faceid-overlay .subtitle { font-size: 14px; color: #94a3b8; margin-bottom: 48px; }
-      #faceid-overlay .faceid-btn {
-        width: 80px; height: 80px; border-radius: 50%;
-        background: rgba(59,130,246,0.15); border: 2px solid rgba(59,130,246,0.4);
-        display: flex; align-items: center; justify-content: center;
-        cursor: pointer; transition: all 0.2s; font-size: 36px;
+
+      /* Top bar: shrink to two rows */
+      .zen-top-bar {
+        padding-top: max(8px, env(safe-area-inset-top));
+        padding-bottom: 8px;
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
       }
-      #faceid-overlay .faceid-btn:active { background: rgba(59,130,246,0.3); transform: scale(0.95); }
-      #faceid-overlay .faceid-btn.disabled { opacity: 0.5; }
-      #faceid-overlay .hint { margin-top: 20px; font-size: 13px; color: #64748b; }
-      #faceid-overlay .skip-btn { margin-top: 32px; background: none; border: none; color: #475569; font-size: 13px; cursor: pointer; text-decoration: underline; }
+
+      .zen-top-content {
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      /* Row 1: logo left, actions right */
+      .zen-logo {
+        font-size: 16px;
+        flex: 1 1 auto;
+      }
+
+      /* Row 2: quick-add full width */
+      .quick-add-input {
+        flex: 1 1 100%;
+        order: 10;
+        min-width: 0;
+        margin-top: 2px;
+        font-size: 16px;
+      }
+
+      /* Hide demoted controls from top bar in compact */
+      #signout-btn,
+      #pomodoro-btn,
+      #search-btn,
+      #voice-mic-btn,
+      #voice-note-btn,
+      .zen-actions .menu-dropdown {
+        display: none !important;
+      }
+
+      /* Context chips: single scrolling row */
+      /* !important needed to override the inline flex-wrap:wrap on the element */
+      #context-switcher {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        gap: 6px;
+        padding-bottom: 2px;
+      }
+
+      #context-switcher::-webkit-scrollbar {
+        display: none;
+      }
+
+      .ctx-btn {
+        flex-shrink: 0;
+      }
+
+      /* Quadrants: single column */
+      .matrix {
+        grid-template-columns: 1fr;
+        padding: 12px;
+        gap: 12px;
+      }
+
+      /* Hide the sidebar notes panel on mobile (accessed via dock) */
+      .notes-col {
+        display: none;
+      }
+
+      /* === Compact dock === */
+      .compact-dock {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: calc(var(--dock-h) + env(safe-area-inset-bottom));
+        padding-bottom: env(safe-area-inset-bottom);
+        background: rgba(var(--dock-bg-rgb, 255,255,255), 0.88);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border-top: 1px solid var(--border-color);
+        z-index: 110;
+        align-items: stretch;
+        justify-content: space-around;
+      }
+
+      [data-theme="dark"] .compact-dock {
+        background: rgba(15, 23, 42, 0.92);
+      }
+
+      .dock-btn {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0 4px;
+        color: var(--text-muted);
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+      }
+
+      .dock-btn:active {
+        opacity: 0.6;
+      }
+
+      .dock-btn svg {
+        width: 24px;
+        height: 24px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex-shrink: 0;
+      }
+
+      .dock-btn span {
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+      }
+
+      /* Task + Note dock buttons: highlight when recording */
+      .dock-btn.dock-recording {
+        color: #ef4444;
+      }
+
+      .dock-btn.dock-note-recording {
+        color: #ca8a04;
+      }
+
+      /* === More bottom sheet === */
+      .compact-more-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.35);
+        z-index: 119;
+      }
+
+      .compact-more-overlay.open {
+        display: block;
+      }
+
+      .compact-more-sheet {
+        display: none;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--bg-card);
+        border-radius: 16px 16px 0 0;
+        padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+        z-index: 120;
+        box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+      }
+
+      .compact-more-sheet.open {
+        display: block;
+        animation: sheetSlideUp 0.25s ease;
+      }
+
+      @keyframes sheetSlideUp {
+        from { transform: translateY(100%); opacity: 0; }
+        to   { transform: translateY(0);   opacity: 1; }
+      }
+
+      .compact-more-handle {
+        width: 36px;
+        height: 4px;
+        background: var(--border-color);
+        border-radius: 2px;
+        margin: 0 auto 16px;
+      }
+
+      .compact-more-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+
+      .compact-more-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 16px 8px;
+        background: var(--quad-gray-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--text-secondary);
+        font-weight: 500;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .compact-more-item:active {
+        opacity: 0.7;
+      }
+
+      .compact-more-item svg {
+        width: 28px;
+        height: 28px;
+        stroke: var(--primary);
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .compact-more-item.danger svg {
+        stroke: var(--danger);
+      }
+
+      .compact-more-item.danger {
+        color: var(--danger);
+      }
+    }
   </style>
 </head>
 
@@ -1832,9 +2181,9 @@
       <div class="zen-actions">
         <button class="zen-icon-btn" onclick="toggleTheme()" title="Toggle Dark Mode" id="theme-toggle">🌙</button>
         <div id="sync-dot" class="status-indicator" title="Synced" style="cursor:default;"></div>
-        <button class="zen-icon-btn" onclick="signOut()" title="Sign out" style="font-size:14px;">⎋</button>
+        <button class="zen-icon-btn" onclick="signOut()" title="Sign out" style="font-size:14px;" id="signout-btn">⎋</button>
         <button class="zen-icon-btn" onclick="togglePomodoro()" title="Pomodoro timer" id="pomodoro-btn">⏱</button>
-        <button class="zen-icon-btn" onclick="toggleSearch()" title="Search & Filter">🔍</button>
+        <button class="zen-icon-btn" onclick="toggleSearch()" title="Search & Filter" id="search-btn">🔍</button>
         <div class="menu-dropdown">
           <button class="zen-icon-btn" onclick="toggleMenu(event)">⋮</button>
           <div class="menu-dropdown-content" id="main-menu">
@@ -1892,6 +2241,79 @@
     </div>
     <div class="floating-badge notes" id="notes-badge" title="Quick Notes">
       📝
+    </div>
+  </div>
+
+  <!-- Compact Bottom Dock (visible only at < 700px) -->
+  <div class="compact-dock" id="compact-dock">
+    <!-- Task: hold to record voice task -->
+    <button class="dock-btn" id="dock-task-btn" title="Hold to speak — creates a task">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+        <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v3M8 22h8"/>
+      </svg>
+      <span>Task</span>
+    </button>
+    <!-- Note: hold to record voice note -->
+    <button class="dock-btn" id="dock-note-btn" title="Hold to dictate a note">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+        <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v3M8 22h8"/>
+        <circle cx="19" cy="5" r="3" fill="var(--warning)" stroke="var(--warning)"/>
+      </svg>
+      <span>Note</span>
+    </button>
+    <!-- Sticky: open notes modal -->
+    <button class="dock-btn" id="dock-sticky-btn" title="Open Pinned Notes" onclick="openNotesModal()">
+      <svg viewBox="0 0 24 24">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M3 9h18M9 21V9"/>
+      </svg>
+      <span>Sticky</span>
+    </button>
+    <!-- More: open bottom sheet -->
+    <button class="dock-btn" id="dock-more-btn" title="More options" onclick="openCompactMore()">
+      <svg viewBox="0 0 24 24">
+        <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+        <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+        <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+      </svg>
+      <span>More</span>
+    </button>
+  </div>
+
+  <!-- More Bottom Sheet overlay + panel -->
+  <div class="compact-more-overlay" id="compact-more-overlay" onclick="closeCompactMore()"></div>
+  <div class="compact-more-sheet" id="compact-more-sheet">
+    <div class="compact-more-handle"></div>
+    <div class="compact-more-grid">
+      <button class="compact-more-item" onclick="closeCompactMore(); showArchivedSection()">
+        <svg viewBox="0 0 24 24">
+          <rect x="2" y="7" width="20" height="14" rx="2"/>
+          <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2M12 12v4M10 14h4"/>
+        </svg>
+        History
+      </button>
+      <button class="compact-more-item" onclick="closeCompactMore(); event.stopPropagation(); togglePomodoro()">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="13" r="8"/>
+          <path d="M12 9v4l2.5 2.5M12 5V3M10 3h4"/>
+        </svg>
+        Pomodoro
+      </button>
+      <button class="compact-more-item" onclick="closeCompactMore(); toggleSearch()">
+        <svg viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="7"/>
+          <path d="m21 21-4.35-4.35"/>
+        </svg>
+        Search
+      </button>
+      <button class="compact-more-item danger" onclick="closeCompactMore(); signOut()">
+        <svg viewBox="0 0 24 24">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+        </svg>
+        Sign Out
+      </button>
     </div>
   </div>
 
@@ -2151,6 +2573,7 @@
           <div class="quad-header red">
             <span>Do First 🔥</span>
             <div style="display:flex; align-items:center; gap:8px;">
+              <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
               <span id="count-first" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('do-first', event)">⋮</button>
@@ -2172,6 +2595,7 @@
           <div class="quad-header blue">
             <span>Schedule 📅</span>
             <div style="display:flex; align-items:center; gap:8px;">
+              <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
               <span id="count-schedule" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('schedule', event)">⋮</button>
@@ -2193,6 +2617,7 @@
           <div class="quad-header yellow">
             <span>Delegate 🤝</span>
             <div style="display:flex; align-items:center; gap:8px;">
+              <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
               <span id="count-delegate" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('delegate', event)">⋮</button>
@@ -2214,6 +2639,7 @@
           <div class="quad-header gray">
             <span>Eliminate 🗑️</span>
             <div style="display:flex; align-items:center; gap:8px;">
+              <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
               <span id="count-eliminate" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('eliminate', event)">⋮</button>
@@ -2584,6 +3010,21 @@
           .replace(/'/g, "&#039;");
       }
 
+      /**
+       * Haptic feedback — safe no-op on web, active on iOS native.
+       * Route ALL haptic calls through here; never call Capacitor directly.
+       * @param {function(Haptics): void} run  receives the Haptics plugin instance
+       */
+      function tmHaptic(run) {
+        try {
+          const C = window.Capacitor;
+          if (C && C.isNativePlatform && C.isNativePlatform() &&
+              C.Plugins && C.Plugins.Haptics) {
+            run(C.Plugins.Haptics);
+          }
+        } catch (e) { /* haptics are non-critical; never throw */ }
+      }
+
       function handleTaskTouchStart(event, taskId) {
         _touchStartTime = Date.now();
         _touchStartX = event.touches[0].clientX;
@@ -2729,32 +3170,13 @@
       }
 
       // ── Auth helpers ─────────────────────────────────────────────
-      // Email + password sign-in. Unlike OAuth, this completes entirely inside
-      // the webview — no system browser, no deep-link callback — which is what
-      // makes it reliable inside the Capacitor (WKWebView) iOS build.
-      // On success, onAuthStateChange('SIGNED_IN') runs the full load below.
-      async function signInWithEmail() {
+      async function signInWithGoogle() {
         if (!supabaseClient) { console.warn('[Auth] Supabase not available'); return; }
-        const emailEl = document.getElementById('auth-email');
-        const passEl  = document.getElementById('auth-password');
-        const errEl   = document.getElementById('auth-error');
-        const btn     = document.getElementById('email-signin-btn');
-        const email = (emailEl?.value || '').trim();
-        const password = passEl?.value || '';
-        if (errEl) errEl.textContent = '';
-        if (!email || !password) {
-          if (errEl) errEl.textContent = 'Enter your email and password.';
-          return;
-        }
-        if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
-        try {
-          const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-          if (error && errEl) errEl.textContent = error.message || 'Sign-in failed.';
-        } catch (e) {
-          if (errEl) errEl.textContent = e?.message || 'Sign-in failed.';
-        } finally {
-          if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
-        }
+        const { error } = await supabaseClient.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: window.location.href }
+        });
+        if (error) console.error('Auth error:', error);
       }
 
       async function signOut() {
@@ -2828,7 +3250,7 @@
         span.textContent = '⚠ Session expired';
         const signInBtn = document.createElement('button');
         signInBtn.textContent = 'Sign in again';
-        signInBtn.onclick = function () { banner.remove(); showAuthScreen(); };
+        signInBtn.onclick = signInWithGoogle;
         signInBtn.style.cssText = 'background:var(--primary);color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;';
         const closeBtn = document.createElement('button');
         closeBtn.textContent = '×';
@@ -2982,7 +3404,8 @@
 
           // Pull fresh server state only after all local changes have been pushed
           await loadTasksFromSupabase()
-          // Push/pull sticky notes — sync local edits then fetch cross-device updates
+          // Push/pull sticky notes — sync local edits then fetch cross-device updates.
+          // Use _saveNotesLocal inside load so the flush path never re-arms the sync timer.
           await syncStickyNotesToSupabase()
           await loadStickyNotesFromSupabase()
           renderNotes()
@@ -3498,6 +3921,7 @@
       let _stickyNotesSyncTimer = null;
       let _stickySyncing = false;
       const STICKY_SYNC_DEBOUNCE_MS = 500;
+      let _tmNotesDirty = false;
 
       // ── Sticky Notes Tombstones ────────────────────────────────────
       // Tracks supabaseIds of notes the user deleted. Persisted to localStorage so
@@ -3551,7 +3975,7 @@
             .from('sticky_notes')
             .select('*')
             .eq('user_id', currentUser.id)
-            .order('updated_at', { ascending: false });
+            .order('created_at', { ascending: true });
           if (error) throw error;
 
           let rows = data || [];
@@ -3601,7 +4025,7 @@
             } else {
               // Server deleted everything (or no notes exist) — clear local cache
               notes = notes.filter(n => !n.supabaseId); // keep any truly local-only
-              saveNotes();
+              _saveNotesLocal(); // push local-only notes up, but don't re-arm sync (already syncing)
             }
             return;
           }
@@ -3623,13 +4047,15 @@
           }
 
           serverNotes.push(...localOnly);
+          // Sort: pinned first, then by stable creation order.
+          // Do NOT sort by modifiedAt — that changes every sync and causes reshuffling.
           serverNotes.sort((a, b) => {
             if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-            return new Date(b.modifiedAt || 0).getTime() - new Date(a.modifiedAt || 0).getTime();
+            return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
           });
 
           notes = serverNotes;
-          saveNotes(); // cache merged result to localStorage
+          _saveNotesLocal(); // cache merged result to localStorage (no sync — load is not a user action)
         } catch (err) {
           console.warn('[stickyNotes] load from Supabase failed, using localStorage:', err.message);
           // Show a subtle warning banner
@@ -3647,6 +4073,8 @@
 
       async function syncStickyNotesToSupabase() {
         if (!currentUser || !supabaseClient || _stickySyncing) return;
+        if (!_tmNotesDirty) return;
+        _tmNotesDirty = false;
         _stickySyncing = true;
         try {
           const toUpsert = notes.map(n => ({
@@ -3726,7 +4154,7 @@
           }
 
           if (synced > 0) {
-            saveNotes();
+            _saveNotesLocal(); // update localStorage after successful upsert — no sync re-arm
             console.log('[stickyNotes] synced ' + synced + ' notes to Supabase');
             // Remove any error banner on success
             var banner = document.getElementById('sticky-sync-error');
@@ -3754,8 +4182,20 @@
         _stickyNotesSyncTimer = setTimeout(() => syncStickyNotesToSupabase(), STICKY_SYNC_DEBOUNCE_MS);
       }
 
-      function saveNotes() {
+      // _saveNotesLocal: write notes[] to localStorage ONLY.
+      // Must NEVER call scheduleStickyNotesSync() — that would re-arm an upsert
+      // on every load/merge cycle, creating the load→save→sync loop.
+      // Only genuine user actions (create, edit, delete, color) set _tmNotesDirty
+      // and call scheduleStickyNotesSync() explicitly.
+      function _saveNotesLocal() {
         localStorage.setItem('stickyNotes', JSON.stringify(notes));
+      }
+
+      // saveNotes: legacy alias kept for external callers (window._tmSaveNotes).
+      // Marks dirty and schedules sync — use ONLY for user-initiated changes.
+      function saveNotes() {
+        _saveNotesLocal();
+        _tmNotesDirty = true;
         if (currentUser && supabaseClient) scheduleStickyNotesSync();
       }
       window._tmSaveNotes = saveNotes;
@@ -4185,6 +4625,7 @@
           notes.unshift(newNote);
         }
 
+        // saveNotes() already sets _tmNotesDirty and schedules sync — user action path.
         saveNotes();
         renderNotes();
         renderPinnedNotes();
@@ -4216,6 +4657,7 @@
           supabaseId ? n.supabaseId !== supabaseId : n.id !== noteId
         );
         console.log('[stickyNotes] optimistic local delete: removed', beforeLen - notes.length, 'note(s), supabaseId=', supabaseId, 'localId=', noteId);
+        // saveNotes() already sets _tmNotesDirty and schedules sync — user action path.
         saveNotes();
         renderNotes();
         renderPinnedNotes();
@@ -4231,6 +4673,7 @@
               // but keep the tombstone. The tombstone enforcement will retry
               // on next page load.
               notes.unshift(noteSnapshot);
+              _tmNotesDirty = true;
               saveNotes();
               renderNotes();
               renderPinnedNotes();
@@ -4259,6 +4702,7 @@
             // The tombstone enforcement will clean up on next page load.
             // Restore the note locally so the user can retry.
             notes.unshift(noteSnapshot);
+            _tmNotesDirty = true;
             saveNotes();
             renderNotes();
             renderPinnedNotes();
@@ -4383,11 +4827,13 @@
           if (task.status === 'todo') task.status = 'in-progress';
           else if (task.status === 'in-progress') {
             task.status = 'completed';
+            tmHaptic(h => h.notification({ type: 'SUCCESS' })); // satisfying completion buzz
             awardXP(task);
             if (task.recurring) {
               await createNextRecurrence(task);
             }
           }
+
           else task.status = 'todo';
           render();
           updateStatsDisplay();
@@ -4590,6 +5036,7 @@
               notes = data.notes || [];
               saveTasks();
               saveStats();
+              _tmNotesDirty = true;
               saveNotes();
               render();
               updateStatsDisplay();
@@ -4773,6 +5220,40 @@
         } finally { localChangeInFlight = false; }
       }
 
+      let _tmFocusedQuadrant = null;
+
+      function toggleFocusMode(buttonElem) {
+        const matrix = document.querySelector('.matrix');
+        const quadrant = buttonElem.closest('.quadrant');
+        
+        if (matrix.classList.contains('tm-focus-active')) {
+          // Exit focus mode
+          matrix.classList.remove('tm-focus-active');
+          document.querySelectorAll('.tm-quadrant-focused').forEach(q => q.classList.remove('tm-quadrant-focused'));
+          document.querySelectorAll('.quadrant-focus-btn').forEach(btn => btn.textContent = '⛶');
+          _tmFocusedQuadrant = null;
+        } else {
+          // Enter focus mode
+          matrix.classList.add('tm-focus-active');
+          quadrant.classList.add('tm-quadrant-focused');
+          buttonElem.textContent = '✖';
+          _tmFocusedQuadrant = quadrant;
+          
+          // Scroll to top to ensure focused quadrant is fully visible
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          document.querySelectorAll('.quadrant-popover.show').forEach(p => p.classList.remove('show'));
+        }
+        if (e.key === 'Escape' && _tmFocusedQuadrant) {
+          const activeBtn = _tmFocusedQuadrant.querySelector('.quadrant-focus-btn');
+          if (activeBtn) toggleFocusMode(activeBtn);
+        }
+      });
+
       function toggleSortDropdown(quad, event) {
         event.stopPropagation();
         const menu = document.getElementById('sort-menu-' + quad);
@@ -4844,6 +5325,19 @@
           'eliminate': filteredTasks.filter(t => getQuad(t.importance, t.urgency) === 'eliminate')
         };
 
+        // ── FLIP: snapshot positions before any DOM mutation ──────────
+        const _flipContainers = ['do-first', 'schedule', 'delegate', 'eliminate']
+          .map(q => document.getElementById('tasks-' + q))
+          .filter(Boolean);
+        // Record which data-ids currently exist across all quadrants
+        const _flipOldIds = new Set(
+          _flipContainers.flatMap(c =>
+            [...c.querySelectorAll('[data-id]')].map(e => e.dataset.id)
+          )
+        );
+        _tmFlip.capture(_flipContainers);
+        // ─────────────────────────────────────────────────────────────
+
         ['do-first', 'schedule', 'delegate', 'eliminate'].forEach(quad => {
           const container = document.getElementById('tasks-' + quad);
           const countId = quad === 'do-first' ? 'count-first' : 'count-' + quad;
@@ -4854,8 +5348,20 @@
           count.textContent = sortedTasks.length;
 
           if (sortedTasks.length === 0) {
+            // Animate out any tasks that were in this quadrant
+            _tmFlip.exit([container], _flipOldIds);
             container.innerHTML = '<div class="empty-state">Drag tasks here</div>';
           } else {
+            // Compute which IDs are leaving this container
+            const newTaskIds = new Set(sortedTasks.map(t => String(t.id)));
+            const removedFromHere = new Set(
+              [...container.querySelectorAll('[data-id]')]
+                .map(e => e.dataset.id)
+                .filter(id => !newTaskIds.has(id))
+            );
+            // Exit animation: clone & fade elements BEFORE innerHTML wipes them
+            _tmFlip.exit([container], removedFromHere);
+
             container.innerHTML = sortedTasks.map(task => {
               const statusIcon = task.status === 'completed' ? '✓' : task.status === 'in-progress' ? '⏱' : '○';
               const statusColor = task.status === 'completed' ? '#16a34a' : task.status === 'in-progress' ? '#3b82f6' : '#9ca3af';
@@ -4920,16 +5426,22 @@
                 <div style="position:relative;">
                   <button class="quadrant-move-btn" onclick="toggleQuadrantPopover(${task.id}, event)" title="Move to quadrant">⊞</button>
                   <div class="quadrant-popover" id="qpop-${task.id}">
-                    <button class="quad-option red"    onclick="moveTaskToQuadrant(${task.id},'do-first',event)">🔴 Do First</button>
-                    <button class="quad-option blue"   onclick="moveTaskToQuadrant(${task.id},'schedule',event)">🔵 Schedule</button>
-                    <button class="quad-option yellow" onclick="moveTaskToQuadrant(${task.id},'delegate',event)">🟡 Delegate</button>
-                    <button class="quad-option gray"   onclick="moveTaskToQuadrant(${task.id},'eliminate',event)">⚪ Eliminate</button>
+                    ${quad !== 'do-first'  ? `<button class="quad-option red"    onclick="moveTaskToQuadrant(${task.id},'do-first',event)">🔴 Do First</button>` : ''}
+                    ${quad !== 'schedule'  ? `<button class="quad-option blue"   onclick="moveTaskToQuadrant(${task.id},'schedule',event)">🔵 Schedule</button>` : ''}
+                    ${quad !== 'delegate'  ? `<button class="quad-option yellow" onclick="moveTaskToQuadrant(${task.id},'delegate',event)">🟡 Delegate</button>` : ''}
+                    ${quad !== 'eliminate' ? `<button class="quad-option gray"   onclick="moveTaskToQuadrant(${task.id},'eliminate',event)">⚪ Eliminate</button>` : ''}
                   </div>
                 </div>
                 <button class="icon-btn" onclick="event.stopPropagation(); deleteTask(${task.id})">×</button>
               </div>
             </div>`;
             }).join('');
+
+            // FLIP play: reorder existing tasks + enter-animate new ones
+            const addedIds = new Set(
+              sortedTasks.map(t => String(t.id)).filter(id => !_flipOldIds.has(id))
+            );
+            _tmFlip.play([container], addedIds);
           }
         });
 
@@ -4940,7 +5452,10 @@
         initSortable();
       }
 
+
       async function handleSortableEnd(evt) {
+        // No actual movement — user scrolled without dragging
+        if (evt.from === evt.to && evt.oldIndex === evt.newIndex) return;
         const itemEl = evt.item;
         const taskIdStr = itemEl.getAttribute('data-id');
         if (!taskIdStr) return;
@@ -5006,6 +5521,10 @@
            }
 
            if (evt.from !== evt.to) {
+               // Light tick on cross-quadrant drop; skip when user prefers reduced motion
+               if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                 tmHaptic(h => h.impact({ style: 'LIGHT' }));
+               }
                // Update from quadrant count
                const fromQuad = evt.from.id.replace('tasks-', '');
                const fromCountId = fromQuad === 'do-first' ? 'count-first' : 'count-' + fromQuad;
@@ -5038,11 +5557,20 @@
             delayOnTouchOnly: true,
             forceFallback: true,
             fallbackClass: 'sortable-drag',
-            onEnd: handleSortableEnd
+            // Disable FLIP during drag so it doesn't fight SortableJS transforms
+            onStart: () => {
+              _tmDragging = true;
+              // Light tick on drag pickup; skip when user prefers reduced motion
+              if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                tmHaptic(h => h.impact({ style: 'LIGHT' }));
+              }
+            },
+            onEnd: (evt) => { _tmDragging = false; handleSortableEnd(evt); }
           });
           sortableInstances.push(instance);
         });
       }
+
 
       // ── Fix 1: Inline date picker functions ─────────────────────
       function toggleDatePicker(taskId) {
@@ -5126,8 +5654,11 @@
           'delegate': { importance: 2, urgency: 5 },
           'eliminate': { importance: 2, urgency: 2 }
         }
-        const oldQuadrant = getQuad(task.importance, task.urgency);
         Object.assign(task, quadMap[quadrant])
+        document.querySelectorAll('.quadrant-popover.show').forEach(p => p.classList.remove('show'))
+        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          tmHaptic(h => h.impact({ style: 'LIGHT' }))
+        }
         saveTasks()
         render()
       }
@@ -5902,7 +6433,163 @@
           Notification.requestPermission()
         }
       }
+
+      // ── FLIP animation engine (presentation-only) ────────────────────
+      // Tracks element positions before/after innerHTML swaps and plays
+      // FLIP animations.  Never touches tasks[], Supabase, or Dexie.
+      const _tmFlip = {
+        _prev: new Map(), // data-id → DOMRect
+
+        /** Call before innerHTML is replaced. Snapshots current positions. */
+        capture(containers) {
+          this._prev.clear();
+          for (const c of containers) {
+            for (const el of c.querySelectorAll('[data-id]')) {
+              this._prev.set(el.dataset.id, el.getBoundingClientRect());
+            }
+          }
+        },
+
+        /**
+         * Animate elements that are about to be removed (before innerHTML swap).
+         * Clones the element, fixes it in viewport coords, and fades it out.
+         * @param {Element[]} containers
+         * @param {Set<string>} removedIds
+         */
+        exit(containers, removedIds) {
+          if (!removedIds.size) return;
+          const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+          if (reduced) return;
+          for (const c of containers) {
+            for (const el of c.querySelectorAll('[data-id]')) {
+              if (!removedIds.has(el.dataset.id)) continue;
+              const rect = el.getBoundingClientRect();
+              const clone = el.cloneNode(true);
+              Object.assign(clone.style, {
+                position:      'fixed',
+                top:           rect.top  + 'px',
+                left:          rect.left + 'px',
+                width:         rect.width  + 'px',
+                height:        rect.height + 'px',
+                margin:        '0',
+                zIndex:        '9998',
+                pointerEvents: 'none',
+                boxSizing:     'border-box'
+              });
+              clone.classList.add('tm-exiting');
+              document.body.appendChild(clone);
+              clone.addEventListener('animationend', () => clone.remove(), { once: true });
+              // Failsafe: remove after 300ms even if animationend never fires
+              setTimeout(() => clone.remove(), 300);
+            }
+          }
+        },
+
+        /**
+         * Call AFTER innerHTML has been replaced.
+         * Plays FLIP reorder for moved elements, enter animation for new elements.
+         * Skips all animation while a SortableJS drag is in flight.
+         * @param {Element[]} containers
+         * @param {Set<string>} newIds  IDs that did not exist before the render
+         */
+        play(containers, newIds) {
+          if (_tmDragging) return;
+          const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+          for (const c of containers) {
+            for (const el of c.querySelectorAll('[data-id]')) {
+              const id = el.dataset.id;
+              if (newIds.has(id)) {
+                // Enter: CSS handles it via .tm-entering, only add the class
+                if (!reduced) {
+                  el.classList.add('tm-entering');
+                  el.addEventListener('animationend',
+                    () => el.classList.remove('tm-entering'), { once: true });
+                }
+                continue;
+              }
+              // FLIP: move element from old pos to new pos
+              const old = this._prev.get(id);
+              if (!old) continue;
+              const now = el.getBoundingClientRect();
+              const dx = old.left - now.left;
+              const dy = old.top  - now.top;
+              if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+              if (!reduced) {
+                el.animate(
+                  [
+                    { transform: `translate(${dx}px,${dy}px)` },
+                    { transform: 'translate(0,0)' }
+                  ],
+                  { duration: 220, easing: 'cubic-bezier(0.25,0.46,0.45,0.94)', fill: 'none' }
+                );
+              }
+            }
+          }
+        }
+      };
+
+      /** Set to true while SortableJS has a drag active.
+       *  Prevents FLIP from fighting the drag library's transform. */
+      let _tmDragging = false;
+
+      // ── Compact dock: More sheet ──────────────────────────────────
+      function openCompactMore() {
+        document.getElementById('compact-more-overlay').classList.add('open');
+        document.getElementById('compact-more-sheet').classList.add('open');
+      }
+
+      function closeCompactMore() {
+        document.getElementById('compact-more-overlay').classList.remove('open');
+        document.getElementById('compact-more-sheet').classList.remove('open');
+      }
+
+      // ── Compact dock: wire Task + Note buttons to voice handlers ──
+      // voice-recorder.js scopes its functions inside an IIFE, so we can't
+      // call them directly. Instead we forward synthetic events to the injected
+      // mic/note buttons (#voice-mic-btn, #voice-note-btn) which already have
+      // the right mousedown/mouseup listeners attached.
+      (function wireDockVoice() {
+        function ready(fn) {
+          if (document.readyState !== 'loading') fn();
+          else document.addEventListener('DOMContentLoaded', fn);
+        }
+
+        ready(function () {
+          var taskBtn = document.getElementById('dock-task-btn');
+          var noteBtn = document.getElementById('dock-note-btn');
+
+          function forwardToInjected(dockEl, injectedId, recordingClass, voiceClass) {
+            function relay(type, e) {
+              e.preventDefault();
+              var target = document.getElementById(injectedId);
+              if (!target) return;
+              target.dispatchEvent(new MouseEvent(type, { bubbles: false }));
+            }
+            function onStart(e) { relay('mousedown', e); }
+            function onStop(e)  { relay('mouseup',   e); }
+
+            dockEl.addEventListener('mousedown',  onStart);
+            dockEl.addEventListener('mouseup',    onStop);
+            dockEl.addEventListener('touchstart', onStart, { passive: false });
+            dockEl.addEventListener('touchend',   onStop,  { passive: false });
+
+            // Mirror recording state from the injected voice button to the dock button
+            function setupMirror() {
+              var injected = document.getElementById(injectedId);
+              if (!injected) { setTimeout(setupMirror, 200); return; }
+              new MutationObserver(function() {
+                dockEl.classList.toggle(recordingClass, injected.classList.contains(voiceClass));
+              }).observe(injected, { attributes: true, attributeFilter: ['class'] });
+            }
+            setupMirror();
+          }
+
+          if (taskBtn) forwardToInjected(taskBtn, 'voice-mic-btn',  'dock-recording',      'voice-recording');
+          if (noteBtn) forwardToInjected(noteBtn, 'voice-note-btn', 'dock-note-recording', 'vnote-recording');
+        });
+      })();
     </script>
+
 
     <!-- ── Debug Panel (activate with ?debug=1) ──────────────────── -->
     <div id="tm-debug-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;max-height:40vh;background:#1e293b;color:#e2e8f0;font-family:monospace;font-size:12px;z-index:99999;overflow-y:auto;border-top:2px solid #6366f1;padding:12px;">
@@ -6011,81 +6698,23 @@
       <div style="font-size:32px; margin-bottom:4px;">📊</div>
       <div style="font-size:24px; font-weight:bold; color:var(--primary-dark);">TaskMatrix</div>
       <div style="color:var(--text-muted); font-size:14px;">Sign in to sync your tasks across devices</div>
-      <div style="display:flex; flex-direction:column; gap:10px; width:280px; margin-top:8px;">
-        <input id="auth-email" type="email" inputmode="email" autocomplete="username"
-          autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Email"
-          style="padding:12px 14px; border:1px solid #d1d5db; border-radius:8px; font-size:15px; width:100%; box-sizing:border-box;">
-        <input id="auth-password" type="password" autocomplete="current-password" placeholder="Password"
-          onkeydown="if(event.key==='Enter')signInWithEmail()"
-          style="padding:12px 14px; border:1px solid #d1d5db; border-radius:8px; font-size:15px; width:100%; box-sizing:border-box;">
-        <button id="email-signin-btn" onclick="signInWithEmail()"
-          style="background:var(--primary); color:white; border:none; padding:12px 24px;
-          border-radius:8px; font-size:15px; font-weight:600; cursor:pointer;
-          box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-          Sign in
-        </button>
-        <div id="auth-error" style="color:#dc2626; font-size:13px; min-height:18px; text-align:center;"></div>
-      </div>
+      <button id="google-signin-btn" onclick="signInWithGoogle()" style="background:white; color:#374151; border:1px solid #d1d5db; padding:12px 24px;
+      border-radius:8px; font-size:15px; cursor:pointer; display:flex; align-items:center; gap:10px;
+      box-shadow:0 1px 3px rgba(0,0,0,0.1); margin-top:8px;">
+        <svg width="18" height="18" viewBox="0 0 18 18">
+          <path fill="#4285F4"
+            d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" />
+          <path fill="#34A853"
+            d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" />
+          <path fill="#FBBC05"
+            d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" />
+          <path fill="#EA4335"
+            d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" />
+        </svg>
+        Sign in with Google
+      </button>
     </div>
 
+</body>
 
-<!-- Face ID Unlock -->
-  <div id="faceid-overlay">
-    <div class="logo">📊</div>
-    <button id="faceid-btn" onclick="unlockWithFaceID()">🔐</button>
-    <div id="faceid-hint">Tap to unlock</div>
-    <button id="faceid-skip" onclick="skipFaceID()">Skip</button>
-  </div>
-
-    <script>
-        // Service Worker
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.js').then(() => console.log('[SW] Registered')).catch(err => console.warn('[SW] Failed:', err));
-        }
-
-        // ── Face ID Unlock ──────────────────────────────────────────────
-        async function checkBiometricAvailability() {
-          try {
-            if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.BiometricAuth) {
-              const { BiometricAuth } = Capacitor.Plugins;
-              const result = await BiometricAuth.checkBiometry();
-              if (result.isAvailable) {
-                document.getElementById('faceid-btn').textContent = '😀';
-                document.getElementById('faceid-hint').textContent = 'Use Face ID to unlock';
-                document.getElementById('faceid-skip').style.display = 'none';
-                return true;
-              }
-            }
-          } catch(e) { console.log('[FaceID] Plugin not available:', e.message); }
-          // No Face ID — skip overlay and start app
-          dismissFaceIDOverlay();
-          return false;
-        }
-
-        async function unlockWithFaceID() {
-          try {
-            if (typeof Capacitor === 'undefined' || !Capacitor.Plugins || !Capacitor.Plugins.BiometricAuth) {
-              dismissFaceIDOverlay();
-              return;
-            }
-            const { BiometricAuth } = Capacitor.Plugins;
-            await BiometricAuth.verifyIdentity({ reason: 'Unlock TaskMatrix', title: 'Face ID' });
-            dismissFaceIDOverlay();
-          } catch(e) {
-            document.getElementById('faceid-hint').textContent = 'Try again';
-            document.getElementById('faceid-hint').style.color = '#f87171';
-          }
-        }
-
-        function skipFaceID() { dismissFaceIDOverlay(); }
-
-        function dismissFaceIDOverlay() {
-          const overlay = document.getElementById('faceid-overlay');
-          overlay.classList.add('unlocked');
-          setTimeout(() => overlay.remove(), 500);
-          init();
-        }
-
-        checkBiometricAvailability();
-    </script>
 </html>
