@@ -206,7 +206,9 @@
         console.error('[voice] pipeline failed:', err);
         var msg = (err.message || '');
         if (msg.indexOf('voice:no_api_key') >= 0) {
-          showToast('Voice needs API key — set XAI_API_KEY via _tmSetApiKey()', 4000);
+          showToast('Voice auth failed — check Supabase edge function secret', 4000);
+        } else if (msg.indexOf('voice:supabase_not_configured') >= 0) {
+          showToast('Voice needs SUPABASE_URL — set via _tmSetApiKey()', 4000);
         } else if (msg.indexOf('voice:no_audio') >= 0) {
           showToast('No audio detected — speak louder', 3000);
         } else if (msg.indexOf('voice:timeout') >= 0 || msg.indexOf('voice:parse_timeout') >= 0) {
@@ -317,7 +319,9 @@
         if (msg.indexOf('voice:bridge_not_ready') >= 0) {
           showToast('Notes feature not available — notes were stripped', 4000);
         } else if (msg.indexOf('voice:no_api_key') >= 0) {
-          showToast('Voice needs API key — set XAI_API_KEY via _tmSetApiKey()', 4000);
+          showToast('Voice auth failed — check Supabase edge function secret', 4000);
+        } else if (msg.indexOf('voice:supabase_not_configured') >= 0) {
+          showToast('Voice needs SUPABASE_URL — set via _tmSetApiKey()', 4000);
         } else if (msg.indexOf('voice:no_audio') >= 0) {
           showToast('No audio detected — speak louder', 3000);
         } else if (msg.indexOf('voice:timeout') >= 0) {

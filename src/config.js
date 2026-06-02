@@ -7,7 +7,6 @@
 // To set keys for local development, open the browser console:
 //   _tmSetApiKey('ANTHROPIC_API_KEY', 'sk-ant-...')
 //   _tmSetApiKey('OPENAI_API_KEY',    'sk-...')
-//   _tmSetApiKey('XAI_API_KEY',       'xai-...')
 //
 // Keys persist across page reloads. Call _tmSetApiKey(name, null) to remove.
 // ────────────────────────────────────────────────────────────────────
@@ -43,6 +42,15 @@ window._tmSetApiKey = function(name, value) {
     if (stored) {
       window[keys[i]] = stored;
     }
+  }
+
+  // Public fallbacks — safe to hardcode. No secrets here.
+  // These make the app work immediately on fresh installs.
+  if (!window.SUPABASE_URL) {
+    window.SUPABASE_URL = 'https://xulnxwwwjpvgsaqnsllo.supabase.co';
+  }
+  if (!window.SUPABASE_ANON_KEY) {
+    window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1bG54d3d3anB2Z3NhcW5zbGxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMTQwMzYsImV4cCI6MjA4OTc5MDAzNn0.lWoihSm-kv_Ep5fXQZ55H4YU5wXmmKvK4LVLSBIVYic';
   }
 })();
 

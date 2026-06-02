@@ -1,3 +1,5 @@
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+chdir: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
 name: Deploy to GitHub Pages
 
 on:
@@ -63,8 +65,10 @@ jobs:
       # (Playwright dev dependency would push the artifact over 500 MB)
       - name: Prepare deploy directory
         run: |
-          mkdir -p _site/src
+          mkdir -p _site/src _site/icons
           find . -maxdepth 1 -name "*.html" -exec cp {} _site/ \;
+          cp manifest.json      _site/manifest.json
+          cp -r icons           _site/icons
           cp src/voiceTask.js _site/src/voiceTask.js
           cp src/voice-recorder.js _site/src/voice-recorder.js
           cp src/model-router.js _site/src/model-router.js

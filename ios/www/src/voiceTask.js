@@ -1,5 +1,5 @@
-// Voice-to-task pipeline: STT via xAI Grok → parse via ModelRouter → task object
-// API key is set in src/config.js (gitignored). Model router handles LLM inference.
+// Voice-to-task pipeline: STT via Supabase Edge Function → parse via ModelRouter → task object
+// XAI_API_KEY lives server-side in Supabase secrets — never touches the client.
 // Bridges into index.html via window._tm* for notes, and exposes handleVoiceTask for tasks.
 // Requires: src/config.js, src/model-router.js loaded first
 // ─────────────────────────────────────────────────────────────────────
@@ -21,14 +21,18 @@ function mimeToExt(mimeType) {
   return 'webm';
 }
 
-// ── STT via xAI Grok ──────────────────────────────────────────────
+// ── STT via Supabase Edge Function ─────────────────────────────────
 // Accepts an audio Blob and returns the transcribed text.
+// The edge function proxies to xAI STT with a server-side API key —
+// no API keys needed on the client.
 // Throws on any failure so callers have a clean error path.
-// Note: STT stays on xAI — it's speech-to-text, not LLM inference.
+
+const STT_PROXY_URL = (window.SUPABASE_URL || '') + '/functions/v1/stt-transcribe';
 
 async function transcribeAudio(audioBlob) {
-  if (!window.XAI_API_KEY) {
-    throw new Error('voice:no_api_key');
+  // SUPABASE_URL must be configured
+  if (!window.SUPABASE_URL) {
+    throw new Error('voice:supabase_not_configured');
   }
 
   // Reject empty or near-empty recordings
@@ -45,9 +49,16 @@ async function transcribeAudio(audioBlob) {
   const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
   try {
-    const response = await fetch('https://api.x.ai/v1/stt', {
+    const headers = {};
+    // Send Supabase anon key if available (not required while JWT is off,
+    // but future-proofs the call if we enable auth later)
+    if (window.SUPABASE_ANON_KEY) {
+      headers['Authorization'] = `Bearer ${window.SUPABASE_ANON_KEY}`;
+    }
+
+    const response = await fetch(STT_PROXY_URL, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${window.XAI_API_KEY}` },
+      headers,
       body: formData,
       signal: controller.signal
     });
@@ -55,11 +66,13 @@ async function transcribeAudio(audioBlob) {
     clearTimeout(timeout);
 
     if (!response.ok) {
-      const errText = await response.text();
-      if (response.status === 401 || response.status === 403) {
+      const errData = await response.json().catch(() => ({}));
+      const errMsg = errData.error || `HTTP ${response.status}`;
+
+      if (errMsg === 'voice:auth_error') {
         throw new Error('voice:auth_error');
       }
-      throw new Error(`voice:stt_failed:${response.status}:${errText.substring(0, 80)}`);
+      throw new Error(`voice:stt_failed:${errMsg}`);
     }
 
     const result = await response.json();

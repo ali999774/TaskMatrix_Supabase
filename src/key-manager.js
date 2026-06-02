@@ -14,7 +14,6 @@
   var needed = [
     { key: 'SUPABASE_URL',       label: 'Supabase URL',          hint: 'https://xxxxxxxx.supabase.co' },
     { key: 'SUPABASE_ANON_KEY',  label: 'Supabase Anon Key',     hint: 'eyJhbGciOi...', type: 'password' },
-    { key: 'XAI_API_KEY',        label: 'xAI API Key (STT)',     hint: 'xai-...', type: 'password' },
     { key: 'ANTHROPIC_API_KEY',  label: 'Anthropic API Key',     hint: 'sk-ant-...', type: 'password' },
     { key: 'OPENAI_API_KEY',     label: 'OpenAI API Key',        hint: 'sk-...', type: 'password' }
   ];
