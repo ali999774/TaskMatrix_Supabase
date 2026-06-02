@@ -9,7 +9,7 @@ const config: CapacitorConfig = {
     hostname: 'localhost',
   },
   ios: {
-    contentInset: 'always',
+    contentInset: 'never',
     allowsLinkPreview: false,
   },
   plugins: {

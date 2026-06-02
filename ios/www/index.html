@@ -1922,6 +1922,7 @@
     /* ── Compact layout ( < 700px ) ─────────────────────────── */
     :root {
       --dock-h: 64px;
+      --header-h: 110px;
     }
 
     /* === Wide ( ≥ 700px ): nothing changes, dock hidden === */
@@ -1933,14 +1934,43 @@
 
     @media (max-width: 700px) {
 
-      /* Body: reserve space for taller compact top bar + dock */
-      body {
-        padding-top: calc(110px + env(safe-area-inset-top));
-        padding-bottom: calc(var(--dock-h) + env(safe-area-inset-bottom) + 16px);
+      /* Structural scroll lock: the body physically cannot scroll or
+         rubber-band. Combined with contentInset:'never' (capacitor.config),
+         this stops iOS from recomputing the safe-area insets mid-scroll —
+         that recompute was changing the env() term baked into the bar heights,
+         which is why locking the px height in CSS never held. */
+      html, body {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        position: fixed;
+        inset: 0;
+        overscroll-behavior: none;
       }
 
-      /* Top bar: shrink to two rows */
+      /* Board: the ONLY scroller. Fixed, filling exactly the gap between the
+         fixed header (top) and fixed dock (bottom). */
+      .container {
+        position: fixed;
+        inset: calc(var(--header-h) + env(safe-area-inset-top))
+               0
+               calc(var(--dock-h) + env(safe-area-inset-bottom))
+               0;
+        max-width: none;
+        margin: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+      }
+
+      /* Top bar: shrink to two rows, hard-locked height with safe-area baked
+         in (box-sizing:border-box → padding lives inside the height). */
       .zen-top-bar {
+        box-sizing: border-box;
+        height: calc(var(--header-h) + env(safe-area-inset-top));
         padding-top: max(8px, env(safe-area-inset-top));
         padding-bottom: 8px;
         padding-left: max(12px, env(safe-area-inset-left));
