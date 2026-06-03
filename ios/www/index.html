@@ -1795,7 +1795,79 @@
         width: 100%;
       }
     }
-  
+
+    /* ── Quick Notes sheet: grabber + Done (compact only) ── */
+    /* Drag-handle pill — hidden on desktop, shown in the compact sheet */
+    .notes-grabber {
+      display: none;
+      width: 40px;
+      height: 5px;
+      border-radius: 3px;
+      background: var(--border-input);
+      margin: 10px auto 2px;
+      flex: 0 0 auto;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    /* "Done" dismiss button — primary control in the compact sheet only */
+    .notes-done-btn {
+      display: none;
+      min-width: 44px;
+      min-height: 44px;
+      padding: 0 18px;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      border-radius: 10px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .notes-done-btn:active { opacity: 0.85; }
+
+    /* ── Compact (<700px): native-style bottom sheet, single column ── */
+    @media (max-width: 699px) {
+      .notes-modal {
+        align-items: flex-end;   /* dock the sheet to the bottom */
+        justify-content: center;
+        padding: 0;
+      }
+      .notes-container {
+        max-width: 100%;
+        width: 100%;
+        max-height: 92vh;
+        border-radius: 16px 16px 0 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;        /* the body scrolls, not the sheet */
+        /* clear the home-indicator at the sheet bottom */
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      .notes-grabber { display: block; }
+      .notes-header {
+        flex: 0 0 auto;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 16px 12px;
+        /* keep Done/header clear of the notch when the sheet is tall */
+        padding-top: calc(8px + env(safe-area-inset-top, 0px));
+        touch-action: none;      /* let the drag handler own this region */
+      }
+      .notes-done-btn { display: inline-flex; }
+      .notes-body {
+        flex: 1 1 auto;
+        padding: 16px;
+        overflow-y: auto;        /* the scrolling region */
+        -webkit-overflow-scrolling: touch;
+      }
+      .notes-grid {
+        grid-template-columns: 1fr;   /* single column, full width */
+      }
+    }
+
   /* ── Face ID Unlock Overlay ── */
       #faceid-overlay {
         position: fixed; inset: 0; z-index: 99999;
@@ -2261,18 +2333,20 @@
 
   <!-- Notes Modal -->
   <div class="notes-modal" id="notes-modal" onclick="closeNotesModalOnOverlay(event)">
-    <div class="notes-container" onclick="event.stopPropagation()">
-      <div class="notes-header">
+    <div class="notes-container" id="notes-container" onclick="event.stopPropagation()">
+      <div class="notes-grabber" id="notes-grabber" aria-hidden="true"></div>
+      <div class="notes-header" id="notes-header">
         <h2 class="notes-title">📝 Quick Notes</h2>
         <div class="notes-header-actions">
           <button class="btn btn-primary" onclick="createNewNote()">+ New Note</button>
-          <button class="modal-close" onclick="closeNotesModal()">×</button>
+          <button class="notes-done-btn" onclick="closeNotesModal()" aria-label="Done">Done</button>
+          <button class="modal-close" onclick="closeNotesModal()" aria-label="Close notes">×</button>
         </div>
-        <div class="notes-body">
-          <div class="notes-grid" id="notes-grid"></div>
-          <input type="text" id="notes-search" class="notes-search" placeholder="🔍 Search notes..."
-            oninput="filterNotes()">
-        </div>
+      </div>
+      <div class="notes-body">
+        <div class="notes-grid" id="notes-grid"></div>
+        <input type="text" id="notes-search" class="notes-search" placeholder="🔍 Search notes..."
+          oninput="filterNotes()">
       </div>
     </div>
   </div>
@@ -3965,20 +4039,105 @@
       }
 
       function openNotesModal() {
+        const container = document.getElementById('notes-container');
+        if (container) {
+          // clear any leftover drag transform from a previous swipe
+          container.style.transition = '';
+          container.style.transform = '';
+        }
+        document.getElementById('notes-modal').style.background = '';
         document.getElementById('notes-modal').classList.add('active');
         document.body.style.overflow = 'hidden';
         renderNotes();
       }
 
       function closeNotesModal() {
-        document.getElementById('notes-modal').classList.remove('active');
+        const modal = document.getElementById('notes-modal');
+        const container = document.getElementById('notes-container');
+        modal.classList.remove('active');
+        modal.style.background = '';
+        if (container) {
+          container.style.transition = '';
+          container.style.transform = '';
+        }
         document.body.style.overflow = 'auto';
         document.getElementById('notes-search').value = '';
       }
 
       function closeNotesModalOnOverlay(event) {
+        // tap on the dimmed scrim behind the sheet → same dismiss as Done
         if (event.target.id === 'notes-modal') closeNotesModal();
       }
+
+      // ── Swipe-down-to-dismiss for the compact Quick Notes sheet ──
+      // Drag lives on the grabber/header only, so it never hijacks the
+      // scrolling notes list. Follows the finger with translateY and either
+      // dismisses (dragged past ~25% of height or a clear downward fling) or
+      // springs back. Reuses closeNotesModal() — no separate dismiss logic.
+      (function setupNotesSheetDrag() {
+        const modal = document.getElementById('notes-modal');
+        const container = document.getElementById('notes-container');
+        const dragRegions = [
+          document.getElementById('notes-grabber'),
+          document.getElementById('notes-header'),
+        ].filter(Boolean);
+        if (!modal || !container || !dragRegions.length) return;
+
+        const isCompact = () => window.matchMedia('(max-width: 699px)').matches;
+        const SNAP = 'transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1)';
+        let dragging = false, startY = 0, dy = 0, prevY = 0, prevT = 0, velocity = 0;
+
+        function onStart(e) {
+          if (!isCompact()) return;
+          // ignore drags that begin on an interactive control
+          if (e.target.closest('button, input, textarea, a')) return;
+          const t = e.touches ? e.touches[0] : e;
+          dragging = true;
+          startY = prevY = t.clientY;
+          prevT = Date.now();
+          dy = 0; velocity = 0;
+          container.style.transition = 'none';
+        }
+
+        function onMove(e) {
+          if (!dragging) return;
+          const t = e.touches ? e.touches[0] : e;
+          dy = Math.max(0, t.clientY - startY); // downward only
+          const now = Date.now();
+          const dt = now - prevT || 1;
+          velocity = (t.clientY - prevY) / dt;   // px/ms, +ve = downward
+          prevY = t.clientY; prevT = now;
+          if (dy > 0) {
+            if (e.cancelable) e.preventDefault();
+            container.style.transform = 'translateY(' + dy + 'px)';
+            const ratio = Math.min(dy / (container.offsetHeight || 1), 1);
+            modal.style.background = 'rgba(0, 0, 0, ' + (0.5 * (1 - ratio)).toFixed(3) + ')';
+          }
+        }
+
+        function onEnd() {
+          if (!dragging) return;
+          dragging = false;
+          const height = container.offsetHeight || window.innerHeight;
+          const dismiss = dy > height * 0.25 || velocity > 0.5;
+          container.style.transition = SNAP;
+          if (dismiss) {
+            container.style.transform = 'translateY(100%)';
+            modal.style.background = 'rgba(0, 0, 0, 0)';
+            setTimeout(closeNotesModal, 240);
+          } else {
+            container.style.transform = 'translateY(0)';
+            modal.style.background = '';
+          }
+        }
+
+        dragRegions.forEach(el => {
+          el.addEventListener('touchstart', onStart, { passive: true });
+          el.addEventListener('touchmove', onMove, { passive: false });
+          el.addEventListener('touchend', onEnd);
+          el.addEventListener('touchcancel', onEnd);
+        });
+      })();
 
       function renderNotes(searchTerm = '') {
         const grid = document.getElementById('notes-grid');
