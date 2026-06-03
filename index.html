@@ -83,6 +83,10 @@
     }
 
     [data-theme="dark"] {
+      /* Switch the browser canvas to dark so reveal/overscroll regions
+         behind the fixed shell render dark, not white. */
+      color-scheme: dark;
+
       /* Base Colors */
       --bg-body: linear-gradient(135deg, #0f172a, #1e293b);
       --bg-card: #1e293b;
@@ -145,6 +149,16 @@
       margin: 0;
       padding: 0;
       box-sizing: border-box;
+    }
+
+    /* Theme the root element so the canvas behind a position:fixed body
+       (scroll-lock) and any safe-area/overscroll region follows the theme
+       instead of revealing a white default background. */
+    html {
+      background: var(--bg-body);
+      /* Tie the browser's own canvas color to the active theme so overscroll
+         reveals never flash white. light by default, dark via [data-theme]. */
+      color-scheme: light;
     }
 
     body {
