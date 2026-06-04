@@ -155,6 +155,7 @@
       padding-top: calc(70px + env(safe-area-inset-top));
       padding-bottom: max(24px, env(safe-area-inset-bottom));
       overflow-x: hidden;
+      overscroll-behavior-y: none;
     }
 
     .container {
@@ -203,7 +204,7 @@
       background: var(--bg-card);
       color: var(--text-primary);
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 16px;
       min-width: 200px;
     }
 
@@ -620,7 +621,7 @@
         flex: 1 1 100%;
         order: 3;
         margin-top: 4px;
-        font-size: 13px;
+        font-size: 16px;
         min-width: 0;
       }
 
@@ -1231,6 +1232,46 @@
       margin-bottom: 20px;
     }
 
+    /* ── Notes sheet: grabber + Done button ── */
+    .notes-sheet-grabber {
+      width: 36px;
+      height: 4px;
+      background: var(--border-color);
+      border-radius: 2px;
+      margin: 12px auto 4px;
+      flex-shrink: 0;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .notes-btn-done {
+      font-size: 16px;
+      font-weight: 600;
+      color: #007aff;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px;
+      line-height: 1;
+    }
+
+    /* ── Notes sheet: portrait / mobile — bottom sheet layout ── */
+    @media (max-width: 700px) {
+      .notes-modal {
+        align-items: flex-end;
+        padding: 0;
+      }
+      .notes-container {
+        border-radius: 20px 20px 0 0;
+        max-height: 85vh;
+        max-width: 100%;
+        will-change: transform;
+      }
+      .notes-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
     .note-card {
       padding: 16px;
       border-radius: 12px;
@@ -1313,7 +1354,7 @@
       padding: 12px 16px;
       border: 2px solid var(--border-input);
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 16px;
       width: 100%;
       margin-top: 16px;
       background: var(--bg-card);
@@ -1423,7 +1464,7 @@
       background: var(--bg-card);
       color: var(--text-primary);
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 16px;
       min-height: 200px;
       resize: vertical;
       font-family: inherit;
@@ -1606,7 +1647,7 @@
       background: var(--bg-card);
       color: var(--text-primary);
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 16px;
       min-height: 100px;
       resize: vertical;
       font-family: inherit;
@@ -1696,6 +1737,7 @@
       flex: 1;
       min-width: 100px;
       padding: 4px;
+      font-size: 16px;
     }
 
     .subtask-list {
@@ -1920,6 +1962,7 @@
     /* ── Compact layout ( < 700px ) ─────────────────────────── */
     :root {
       --dock-h: 64px;
+      --header-h: 110px;
     }
 
     /* === Wide ( ≥ 700px ): nothing changes, dock hidden === */
@@ -1931,14 +1974,46 @@
 
     @media (max-width: 700px) {
 
-      /* Body: reserve space for taller compact top bar + dock */
-      body {
-        padding-top: calc(110px + env(safe-area-inset-top));
-        padding-bottom: calc(var(--dock-h) + env(safe-area-inset-bottom) + 16px);
+      /* Structural scroll lock: the body physically cannot scroll or
+         rubber-band. Combined with contentInset:'never' (capacitor.config),
+         this stops iOS from recomputing the safe-area insets mid-scroll —
+         that recompute was changing the env() term baked into the bar heights,
+         which is why locking the px height in CSS never held. */
+      html, body {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        position: fixed;
+        inset: 0;
+        overscroll-behavior: none;
       }
 
-      /* Top bar: shrink to two rows */
+      /* Board: the ONLY scroller. Fixed, filling exactly the gap between the
+         fixed header (top) and fixed dock (bottom). Background must be on this
+         element (not body) — iOS Safari doesn't composite the body gradient
+         through a fixed child, leaving the board area white. */
+      .container {
+        position: fixed;
+        inset: calc(var(--header-h) + env(safe-area-inset-top))
+               0
+               calc(var(--dock-h) + env(safe-area-inset-bottom))
+               0;
+        max-width: none;
+        margin: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        background: var(--bg-body);
+      }
+
+      /* Top bar: shrink to two rows, hard-locked height with safe-area baked
+         in (box-sizing:border-box → padding lives inside the height). */
       .zen-top-bar {
+        box-sizing: border-box;
+        height: calc(var(--header-h) + env(safe-area-inset-top));
         padding-top: max(8px, env(safe-area-inset-top));
         padding-bottom: 8px;
         padding-left: max(12px, env(safe-area-inset-left));
@@ -1963,7 +2038,7 @@
         order: 10;
         min-width: 0;
         margin-top: 2px;
-        font-size: 14px;
+        font-size: 16px;
       }
 
       /* Hide demoted controls from top bar in compact */
@@ -2016,7 +2091,7 @@
         right: 0;
         height: calc(var(--dock-h) + env(safe-area-inset-bottom));
         padding-bottom: env(safe-area-inset-bottom);
-        background: rgba(var(--dock-bg-rgb, 255,255,255), 0.88);
+        background: rgba(255, 255, 255, 0.88);
         backdrop-filter: blur(14px);
         -webkit-backdrop-filter: blur(14px);
         border-top: 1px solid var(--border-color);
@@ -2292,7 +2367,7 @@
         </svg>
         History
       </button>
-      <button class="compact-more-item" onclick="closeCompactMore(); togglePomodoro()">
+      <button class="compact-more-item" onclick="closeCompactMore(); event.stopPropagation(); togglePomodoro()">
         <svg viewBox="0 0 24 24">
           <circle cx="12" cy="13" r="8"/>
           <path d="M12 9v4l2.5 2.5M12 5V3M10 3h4"/>
@@ -2572,7 +2647,7 @@
             <span>Do First 🔥</span>
             <div style="display:flex; align-items:center; gap:8px;">
               <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
-              <span id="count-first" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
+              <span id="count-first" style="background:var(--bg-card); padding:4px 8px; border-radius:4px; color:var(--text-primary);">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('do-first', event)">⋮</button>
                 <div class="sort-dropdown-menu" id="sort-menu-do-first">
@@ -2594,7 +2669,7 @@
             <span>Schedule 📅</span>
             <div style="display:flex; align-items:center; gap:8px;">
               <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
-              <span id="count-schedule" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
+              <span id="count-schedule" style="background:var(--bg-card); padding:4px 8px; border-radius:4px; color:var(--text-primary);">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('schedule', event)">⋮</button>
                 <div class="sort-dropdown-menu" id="sort-menu-schedule">
@@ -2616,7 +2691,7 @@
             <span>Delegate 🤝</span>
             <div style="display:flex; align-items:center; gap:8px;">
               <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
-              <span id="count-delegate" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
+              <span id="count-delegate" style="background:var(--bg-card); padding:4px 8px; border-radius:4px; color:var(--text-primary);">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('delegate', event)">⋮</button>
                 <div class="sort-dropdown-menu" id="sort-menu-delegate">
@@ -2638,7 +2713,7 @@
             <span>Eliminate 🗑️</span>
             <div style="display:flex; align-items:center; gap:8px;">
               <button class="quadrant-focus-btn" onclick="toggleFocusMode(this)" title="Focus Quadrant">⛶</button>
-              <span id="count-eliminate" style="background:white; padding:4px 8px; border-radius:4px;">0</span>
+              <span id="count-eliminate" style="background:var(--bg-card); padding:4px 8px; border-radius:4px; color:var(--text-primary);">0</span>
               <div class="sort-dropdown">
                 <button class="sort-dropdown-btn" onclick="toggleSortDropdown('eliminate', event)">⋮</button>
                 <div class="sort-dropdown-menu" id="sort-menu-eliminate">
@@ -2685,18 +2760,19 @@
 
   <!-- Notes Modal -->
   <div class="notes-modal" id="notes-modal" onclick="closeNotesModalOnOverlay(event)">
-    <div class="notes-container" onclick="event.stopPropagation()">
+    <div class="notes-container" id="notes-container" onclick="event.stopPropagation()">
+      <div class="notes-sheet-grabber" id="notes-grabber"></div>
       <div class="notes-header">
         <h2 class="notes-title">📝 Quick Notes</h2>
         <div class="notes-header-actions">
           <button class="btn btn-primary" onclick="createNewNote()">+ New Note</button>
-          <button class="modal-close" onclick="closeNotesModal()">×</button>
+          <button class="notes-btn-done" onclick="closeNotesModal()">Done</button>
         </div>
-        <div class="notes-body">
-          <div class="notes-grid" id="notes-grid"></div>
-          <input type="text" id="notes-search" class="notes-search" placeholder="🔍 Search notes..."
-            oninput="filterNotes()">
-        </div>
+      </div>
+      <div class="notes-body">
+        <div class="notes-grid" id="notes-grid"></div>
+        <input type="text" id="notes-search" class="notes-search" placeholder="🔍 Search notes..."
+          oninput="filterNotes()">
       </div>
     </div>
   </div>
@@ -4403,19 +4479,65 @@
       }
 
       function openNotesModal() {
-        document.getElementById('notes-modal').classList.add('active');
+        var modal     = document.getElementById('notes-modal');
+        var container = document.getElementById('notes-container');
+        modal.classList.add('active');
+        if (container) { container.style.transform = ''; container.style.transition = ''; }
         document.body.style.overflow = 'hidden';
         renderNotes();
+        _initNotesSwipe();
       }
 
       function closeNotesModal() {
-        document.getElementById('notes-modal').classList.remove('active');
-        document.body.style.overflow = 'auto';
-        document.getElementById('notes-search').value = '';
+        var modal     = document.getElementById('notes-modal');
+        var container = document.getElementById('notes-container');
+        var search    = document.getElementById('notes-search');
+        if (container && window.innerWidth <= 700) {
+          container.style.transition = 'transform 0.28s ease';
+          container.style.transform  = 'translateY(100%)';
+          setTimeout(function() {
+            modal.classList.remove('active');
+            container.style.transition = '';
+            container.style.transform  = '';
+            if (search) search.value = '';
+            document.body.style.overflow = 'auto';
+          }, 280);
+        } else {
+          modal.classList.remove('active');
+          if (search) search.value = '';
+          document.body.style.overflow = 'auto';
+        }
       }
 
       function closeNotesModalOnOverlay(event) {
         if (event.target.id === 'notes-modal') closeNotesModal();
+      }
+
+      var _notesSwipeReady = false;
+      function _initNotesSwipe() {
+        if (_notesSwipeReady) return;
+        _notesSwipeReady = true;
+        var grabber   = document.getElementById('notes-grabber');
+        var container = document.getElementById('notes-container');
+        if (!grabber || !container) return;
+        var startY = 0;
+        grabber.addEventListener('touchstart', function(e) {
+          startY = e.touches[0].clientY;
+          container.style.transition = 'none';
+        }, { passive: true });
+        grabber.addEventListener('touchmove', function(e) {
+          var dy = e.touches[0].clientY - startY;
+          if (dy > 0) container.style.transform = 'translateY(' + dy + 'px)';
+        }, { passive: true });
+        grabber.addEventListener('touchend', function(e) {
+          var dy = e.changedTouches[0].clientY - startY;
+          if (dy > 80) {
+            closeNotesModal();
+          } else {
+            container.style.transition = 'transform 0.2s ease';
+            container.style.transform  = '';
+          }
+        }, { passive: true });
       }
 
       function renderNotes(searchTerm = '') {
@@ -5452,6 +5574,8 @@
 
 
       async function handleSortableEnd(evt) {
+        // No actual movement — user scrolled without dragging
+        if (evt.from === evt.to && evt.oldIndex === evt.newIndex) return;
         const itemEl = evt.item;
         const taskIdStr = itemEl.getAttribute('data-id');
         if (!taskIdStr) return;
@@ -6554,24 +6678,34 @@
           var taskBtn = document.getElementById('dock-task-btn');
           var noteBtn = document.getElementById('dock-note-btn');
 
-          function forwardToInjected(dockEl, injectedId, recordingClass) {
+          function forwardToInjected(dockEl, injectedId, recordingClass, voiceClass) {
             function relay(type, e) {
               e.preventDefault();
               var target = document.getElementById(injectedId);
               if (!target) return;
               target.dispatchEvent(new MouseEvent(type, { bubbles: false }));
             }
-            function onStart(e) { relay('mousedown', e); dockEl.classList.add(recordingClass); }
-            function onStop(e)  { relay('mouseup',   e); dockEl.classList.remove(recordingClass); }
+            function onStart(e) { relay('mousedown', e); }
+            function onStop(e)  { relay('mouseup',   e); }
 
             dockEl.addEventListener('mousedown',  onStart);
             dockEl.addEventListener('mouseup',    onStop);
             dockEl.addEventListener('touchstart', onStart, { passive: false });
             dockEl.addEventListener('touchend',   onStop,  { passive: false });
+
+            // Mirror recording state from the injected voice button to the dock button
+            function setupMirror() {
+              var injected = document.getElementById(injectedId);
+              if (!injected) { setTimeout(setupMirror, 200); return; }
+              new MutationObserver(function() {
+                dockEl.classList.toggle(recordingClass, injected.classList.contains(voiceClass));
+              }).observe(injected, { attributes: true, attributeFilter: ['class'] });
+            }
+            setupMirror();
           }
 
-          if (taskBtn) forwardToInjected(taskBtn, 'voice-mic-btn',  'dock-recording');
-          if (noteBtn) forwardToInjected(noteBtn, 'voice-note-btn', 'dock-note-recording');
+          if (taskBtn) forwardToInjected(taskBtn, 'voice-mic-btn',  'dock-recording',      'voice-recording');
+          if (noteBtn) forwardToInjected(noteBtn, 'voice-note-btn', 'dock-note-recording', 'vnote-recording');
         });
       })();
     </script>
