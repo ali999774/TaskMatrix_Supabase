@@ -120,4 +120,18 @@ npx playwright test tests/sortable-touch.spec.js
 - Security-conscious: API keys go in localStorage + CI injection, never in files.
 - Show proposed code before committing non-trivial changes.
 - Prefer concise answers. No fluff.
+
+## UI/UX Standards
+
+For UI/UX work, apply the universal principles in:
+https://github.com/ali999774/ali-agent-standards/blob/main/ui-ux/AGENTS.md
+
+And these stack modules:
+- https://github.com/ali999774/ali-agent-standards/blob/main/ui-ux/stack-modules/stack-capacitor-ios.md
+- https://github.com/ali999774/ali-agent-standards/blob/main/ui-ux/stack-modules/stack-pwa-offline.md
+
+Project-specific UI status & roadmap: ./docs/UI-UX-AUDIT.md
+The React rebuild is at ali999774/TaskMatrix_React — standards apply there too.
+
+*Standards pointer added: June 2026*
 - If Jules has been working here, check git log before making assumptions.
